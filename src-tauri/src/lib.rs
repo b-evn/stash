@@ -1,0 +1,507 @@
+mod capture;
+mod config;
+mod db;
+mod kind;
+mod platform;
+
+use std::{
+    collections::VecDeque,
+    io,
+    sync::{
+        atomic::{AtomicBool, AtomicI64, Ordering},
+        mpsc::{channel, Sender},
+        Arc, Mutex, RwLock,
+    },
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
+
+use clipboard_master::{CallbackResult, ClipboardHandler, Master};
+use tauri::{
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, State, WindowEvent,
+};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+use db::{Clip, Db};
+use serde::Serialize;
+
+const CARD_W: f64 = 384.0;
+const MARGIN: f64 = 16.0;
+const MIN_H: f64 = 120.0;
+const MAX_H: f64 = 520.0;
+const GAP: f64 = 4.0;
+const ECHO_MS: i64 = 600;
+const BLUR_GRACE: Duration = Duration::from_millis(250);
+const CONFIG_POLL: Duration = Duration::from_millis(500);
+
+struct Placement {
+    x: i32,
+    caret_top: i32,
+    caret_bottom: i32,
+    work: platform::Rect,
+    above: bool,
+    margin: i32,
+    gap: i32,
+}
+
+#[derive(Default)]
+struct Stack {
+    queue: VecDeque<i64>,
+    total: usize,
+    watch: Option<platform::PasteWatch>,
+}
+
+#[derive(Serialize, Clone)]
+struct StackStatus {
+    ids: Vec<i64>,
+    total: usize,
+}
+
+struct AppState {
+    stack: Mutex<Stack>,
+    pasted: Sender<()>,
+    db: Arc<Db>,
+    on_clipboard: Mutex<Option<i64>>,
+    quiet_until: Arc<AtomicI64>,
+    target: Mutex<isize>,
+    placement: Mutex<Option<Placement>>,
+    height_px: Mutex<i32>,
+    shown_at: Mutex<Instant>,
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
+
+fn popup(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    app.get_webview_window("main")
+}
+
+fn toggle_popup(app: &AppHandle, from_tray: bool) {
+    let Some(w) = popup(app) else { return };
+    if w.is_visible().unwrap_or(false) {
+        let _ = w.hide();
+        return;
+    }
+    let st = app.state::<AppState>();
+
+    let target = if from_tray { 0 } else { platform::foreground() };
+    *st.target.lock().unwrap() = target;
+
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let px = |v: f64| (v * scale).round() as i32;
+    let (cx, top, bottom) = platform::caret_or_cursor();
+    let work = platform::work_area(cx, top);
+    let (margin, gap) = (px(MARGIN), px(GAP));
+    let width = px(CARD_W + 2.0 * MARGIN);
+    let height = *st.height_px.lock().unwrap();
+
+    let above = bottom + gap + px(MAX_H) > work.bottom;
+    let x = (cx - margin).min(work.right - width + margin).max(work.left - margin);
+    let placement = Placement { x, caret_top: top, caret_bottom: bottom, work, above, margin, gap };
+    let y = y_for(&placement, height);
+    *st.placement.lock().unwrap() = Some(placement);
+
+    let _ = w.set_size(PhysicalSize::new(width as u32, height as u32));
+    let _ = w.set_position(PhysicalPosition::new(x, y));
+    *st.shown_at.lock().unwrap() = Instant::now();
+    let _ = app.emit("stash-show", ());
+    let _ = w.show();
+    let _ = w.set_focus();
+    if let Ok(h) = w.hwnd() {
+        platform::force_foreground(h.0 as isize);
+    }
+}
+
+fn y_for(p: &Placement, height: i32) -> i32 {
+    let y = if p.above { p.caret_top - p.gap - height + p.margin } else { p.caret_bottom + p.gap - p.margin };
+    y.min(p.work.bottom - height + p.margin).max(p.work.top - p.margin)
+}
+
+fn hide_popup(app: &AppHandle) {
+    if let Some(w) = popup(app) {
+        let _ = w.hide();
+    }
+}
+
+#[tauri::command]
+fn list_clips(state: State<AppState>) -> Result<Vec<Clip>, String> {
+    state.db.list().map_err(|e| e.to_string())
+}
+
+fn put_on_clipboard(state: &AppState, id: i64) -> Result<(), String> {
+    let p = state.db.payload(id).map_err(|e| e.to_string())?.ok_or("clip no longer exists")?;
+    state.quiet_until.store(now_ms() + ECHO_MS, Ordering::Relaxed);
+    let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    capture::write(&mut cb, &p.kind, &p.text, p.data.as_deref())?;
+    *state.on_clipboard.lock().unwrap() = Some(id);
+    state.db.mark_used(id, now_ms()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn paste_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<(), String> {
+    stop_running_stack(&app);
+    put_on_clipboard(&state, id)?;
+    hide_popup(&app);
+    let target = *state.target.lock().unwrap();
+    thread::spawn(move || platform::paste_into(target));
+    Ok(())
+}
+
+fn stack_status(app: &AppHandle) -> StackStatus {
+    let st = app.state::<AppState>();
+    let s = st.stack.lock().unwrap();
+    let mut ids: Vec<i64> = s.queue.iter().copied().collect();
+    if let Some(cur) = *st.on_clipboard.lock().unwrap() {
+        if s.watch.is_some() {
+            ids.insert(0, cur);
+        }
+    }
+    StackStatus { ids, total: s.total }
+}
+
+fn emit_stack(app: &AppHandle) {
+    let _ = app.emit("stash-stack", stack_status(app));
+}
+
+fn end_stack(app: &AppHandle) {
+    {
+        let st = app.state::<AppState>();
+        let mut s = st.stack.lock().unwrap();
+        s.queue.clear();
+        s.total = 0;
+        s.watch = None;
+    }
+    emit_stack(app);
+}
+
+fn stop_running_stack(app: &AppHandle) {
+    if app.state::<AppState>().stack.lock().unwrap().watch.is_some() {
+        end_stack(app);
+    }
+}
+
+fn advance_stack(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    let next = st.stack.lock().unwrap().queue.pop_front();
+    match next {
+        Some(id) => {
+            if put_on_clipboard(&st, id).is_err() {
+                return advance_stack(app);
+            }
+            let mut s = st.stack.lock().unwrap();
+            if s.watch.is_none() {
+                s.watch = Some(platform::watch_pastes(st.pasted.clone()));
+            }
+            drop(s);
+            emit_stack(app);
+        }
+        None => end_stack(app),
+    }
+}
+
+#[tauri::command]
+fn start_stack(app: AppHandle, state: State<AppState>, ids: Vec<i64>) -> Result<(), String> {
+    let (&first, rest) = ids.split_first().ok_or("stack is empty")?;
+    {
+        let mut s = state.stack.lock().unwrap();
+        s.watch = None;
+        s.queue = rest.iter().copied().collect();
+        s.total = ids.len();
+    }
+    put_on_clipboard(&state, first)?;
+    hide_popup(&app);
+    let target = *state.target.lock().unwrap();
+    let app = app.clone();
+    thread::spawn(move || {
+        if target != 0 {
+            platform::paste_into(target);
+            thread::sleep(Duration::from_millis(150));
+            advance_stack(&app);
+        } else {
+            let st = app.state::<AppState>();
+            st.stack.lock().unwrap().watch = Some(platform::watch_pastes(st.pasted.clone()));
+            emit_stack(&app);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn cancel_stack(app: AppHandle) {
+    end_stack(&app);
+}
+
+#[tauri::command]
+fn get_stack(app: AppHandle) -> StackStatus {
+    stack_status(&app)
+}
+
+#[tauri::command]
+fn paste_joined(app: AppHandle, state: State<AppState>, ids: Vec<i64>) -> Result<(), String> {
+    stop_running_stack(&app);
+    let mut parts = Vec::new();
+    for id in ids {
+        if let Some(p) = state.db.payload(id).map_err(|e| e.to_string())? {
+            if p.kind != "image" && p.kind != "file" {
+                parts.push(p.text.trim_end_matches(['\r', '\n']).to_string());
+            }
+            let _ = state.db.mark_used(id, now_ms());
+        }
+    }
+    state.quiet_until.store(now_ms() + ECHO_MS, Ordering::Relaxed);
+    arboard::Clipboard::new().and_then(|mut c| c.set_text(parts.join("\r\n"))).map_err(|e| e.to_string())?;
+    hide_popup(&app);
+    let target = *state.target.lock().unwrap();
+    thread::spawn(move || platform::paste_into(target));
+    Ok(())
+}
+
+#[tauri::command]
+fn copy_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<(), String> {
+    stop_running_stack(&app);
+    put_on_clipboard(&state, id)?;
+    hide_popup(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn toggle_pin(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.db.toggle_pin(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_clip(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.db.delete(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn hide_window(app: AppHandle) {
+    hide_popup(&app);
+}
+
+#[tauri::command]
+fn fit_window(app: AppHandle, state: State<AppState>, height: f64) {
+    let Some(w) = popup(&app) else { return };
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let h = height.clamp(MIN_H, MAX_H) + 2.0 * MARGIN;
+    let height_px = (h * scale).round() as i32;
+    *state.height_px.lock().unwrap() = height_px;
+    let _ = w.set_size(LogicalSize::new(CARD_W + 2.0 * MARGIN, h));
+    if let Some(p) = state.placement.lock().unwrap().as_ref() {
+        let _ = w.set_position(PhysicalPosition::new(p.x, y_for(p, height_px)));
+    }
+}
+
+struct Watcher {
+    app: AppHandle,
+    db: Arc<Db>,
+    paused: Arc<AtomicBool>,
+    quiet_until: Arc<AtomicI64>,
+    cfg: Arc<RwLock<config::Config>>,
+}
+
+impl Watcher {
+    fn capture(&self) {
+        if now_ms() < self.quiet_until.load(Ordering::Relaxed) {
+            return;
+        }
+        if self.app.state::<AppState>().stack.lock().unwrap().watch.is_some() {
+            end_stack(&self.app);
+        }
+        let cfg = self.cfg.read().unwrap_or_else(|e| e.into_inner()).clone();
+        if cfg.ignore_sensitive && platform::clipboard_is_sensitive() {
+            return;
+        }
+        let limits = capture::Limits {
+            max_chars: cfg.max_clip_chars,
+            max_image_pixels: cfg.max_image_megapixels as u64 * 1_000_000,
+            images: cfg.capture_images,
+            files: cfg.capture_files,
+        };
+        for _ in 0..6 {
+            if let Ok(mut cb) = arboard::Clipboard::new() {
+                if let Some(entry) = capture::read(&mut cb, &limits) {
+                    if let Err(e) = self.db.add(&entry, now_ms(), cfg.max_items) {
+                        eprintln!("stash: could not save clip: {e}");
+                    }
+                }
+                return;
+            }
+            thread::sleep(Duration::from_millis(40));
+        }
+    }
+}
+
+impl ClipboardHandler for Watcher {
+    fn on_clipboard_change(&mut self) -> CallbackResult {
+        if !self.paused.load(Ordering::Relaxed) {
+            self.capture();
+        }
+        CallbackResult::Next
+    }
+
+    fn on_clipboard_error(&mut self, error: io::Error) -> CallbackResult {
+        eprintln!("stash: clipboard error: {error}");
+        CallbackResult::Next
+    }
+}
+
+fn bind_hotkey(app: &AppHandle, hotkey: &str) -> bool {
+    let bound = app.global_shortcut().on_shortcut(hotkey, |app, _shortcut, event| {
+        if event.state() == ShortcutState::Pressed {
+            toggle_popup(app, false);
+        }
+    });
+    if let Err(e) = &bound {
+        eprintln!("stash: could not register hotkey {hotkey:?}: {e} (use the tray icon instead)");
+    }
+    bound.is_ok()
+}
+
+fn apply_config(app: &AppHandle, live: &RwLock<config::Config>, mut new: config::Config) {
+    let old = live.read().unwrap_or_else(|e| e.into_inner()).clone();
+    if new == old {
+        return;
+    }
+    if new.hotkey != old.hotkey {
+        let _ = app.global_shortcut().unregister(old.hotkey.as_str());
+        if !bind_hotkey(app, &new.hotkey) {
+            bind_hotkey(app, &old.hotkey);
+            new.hotkey = old.hotkey;
+        }
+    }
+    *live.write().unwrap_or_else(|e| e.into_inner()) = new;
+    eprintln!("stash: config reloaded");
+}
+
+fn watch_config(app: AppHandle, mut watch: config::Watch, live: Arc<RwLock<config::Config>>) {
+    thread::spawn(move || loop {
+        thread::sleep(CONFIG_POLL);
+        if let Some(new) = watch.poll() {
+            apply_config(&app, &live, new);
+        }
+    });
+}
+
+fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
+    let pause = CheckMenuItem::with_id(app, "pause", "Pause capturing", true, false, None::<&str>)?;
+    let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
+    let autostart = CheckMenuItem::with_id(app, "autostart", "Start with Windows", true, autostart_on, None::<&str>)?;
+    let clear = MenuItem::with_id(app, "clear", "Clear history (keeps pinned)", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let sep = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(app, &[&open, &pause, &autostart, &clear, &sep, &quit])?;
+
+    let mut tray = TrayIconBuilder::new()
+        .tooltip("stash")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(move |app, event| match event.id.as_ref() {
+            "open" => toggle_popup(app, true),
+            "pause" => paused.store(pause.is_checked().unwrap_or(false), Ordering::Relaxed),
+            "autostart" => {
+                let mgr = app.autolaunch();
+                let _ = if autostart.is_checked().unwrap_or(false) { mgr.enable() } else { mgr.disable() };
+            }
+            "clear" => {
+                let _ = db.clear_unpinned();
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                toggle_popup(tray.app_handle(), true);
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| toggle_popup(app, false)))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .invoke_handler(tauri::generate_handler![
+            list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, start_stack,
+            cancel_stack, get_stack, paste_joined
+        ])
+        .on_window_event(|window, event| {
+            if let WindowEvent::Focused(false) = event {
+                let st = window.state::<AppState>();
+                if st.shown_at.lock().unwrap().elapsed() > BLUR_GRACE {
+                    let _ = window.hide();
+                }
+            }
+        })
+        .setup(|app| {
+            let dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&dir)?;
+            let config_watch = config::Watch::new(&dir);
+            let cfg = Arc::new(RwLock::new(config::load(&dir)));
+            let db = Arc::new(Db::open(&dir.join("clips.db"))?);
+            let paused = Arc::new(AtomicBool::new(false));
+            let quiet_until = Arc::new(AtomicI64::new(0));
+            let (pasted, pastes) = channel::<()>();
+
+            app.manage(AppState {
+                stack: Mutex::new(Stack::default()),
+                pasted,
+                on_clipboard: Mutex::new(None),
+                db: db.clone(),
+                quiet_until: quiet_until.clone(),
+                target: Mutex::new(0),
+                placement: Mutex::new(None),
+                height_px: Mutex::new(360),
+                shown_at: Mutex::new(Instant::now()),
+            });
+
+            let hotkey = cfg.read().unwrap_or_else(|e| e.into_inner()).hotkey.clone();
+            bind_hotkey(app.handle(), &hotkey);
+            watch_config(app.handle().clone(), config_watch, cfg.clone());
+
+            let first_run = dir.join(".autostart-init");
+            if !first_run.exists() {
+                let _ = app.autolaunch().enable();
+                let _ = std::fs::write(&first_run, b"");
+            }
+
+            build_tray(app, db.clone(), paused.clone())?;
+
+            let handle = app.handle().clone();
+            thread::spawn(move || {
+                for () in pastes {
+                    thread::sleep(Duration::from_millis(120));
+                    if handle.state::<AppState>().stack.lock().unwrap().watch.is_some() {
+                        advance_stack(&handle);
+                    }
+                }
+            });
+
+            let handle = app.handle().clone();
+            thread::spawn(move || {
+                let watcher = Watcher { app: handle, db, paused, quiet_until, cfg };
+                match Master::new(watcher) {
+                    Ok(mut master) => {
+                        if let Err(e) = master.run() {
+                            eprintln!("stash: clipboard watcher stopped: {e}");
+                        }
+                    }
+                    Err(e) => eprintln!("stash: could not start clipboard watcher: {e}"),
+                }
+            });
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running stash");
+}

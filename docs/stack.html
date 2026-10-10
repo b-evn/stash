@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>stash paste stack</title>
+<style>
+  @font-face { font-family: "Geist"; src: url("../ui/fonts/geist.woff2") format("woff2"); font-weight: 100 900; }
+  :root { --bg: #fff; --fg: #09090b; --muted: #71717a; --border: #e4e4e7; --soft: #f4f4f5; --wall: radial-gradient(520px 520px at 10% 0%, #e0e7ff, transparent 65%), radial-gradient(520px 520px at 100% 100%, #fde2e4, transparent 65%), #eef0f4; }
+  :root[data-theme="dark"] { --bg: #111113; --fg: #fafafa; --muted: #a1a1aa; --border: #27272a; --soft: #18181b; --wall: radial-gradient(520px 520px at 10% 0%, #1e1b4b, transparent 65%), radial-gradient(520px 520px at 100% 100%, #3b0a1a, transparent 65%), #09090b; }
+  * { box-sizing: border-box; }
+  html, body { width: 464px; height: 624px; }
+  body { margin: 0; position: relative; background: var(--wall); font: 14px/1.6 "Geist", system-ui, sans-serif; color: var(--fg); overflow: hidden; }
+  .win { position: absolute; left: 16px; top: 16px; width: 432px; height: 800px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 30px 80px -20px rgba(0,0,0,.35); overflow: hidden; }
+  .titlebar { height: 38px; display: flex; align-items: center; padding: 0 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--soft); }
+  .titlebar .ctl { margin-left: auto; display: flex; gap: 22px; letter-spacing: 2px; }
+  .caret { display: inline-block; width: 1.5px; height: 1.25em; background: var(--fg); vertical-align: -3px; margin-left: 1px; }
+  iframe { position: absolute; border: 0; width: 416px; height: 560px; background: transparent; }
+  .form { padding: 18px 20px; display: grid; gap: 16px; }
+  .row label { display: block; font-size: 12.5px; font-weight: 500; margin-bottom: 6px; }
+  .input { height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; display: flex; align-items: center; font-size: 13.5px; }
+  .input.focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--muted) 70%, transparent); border-color: var(--muted); }
+  .input .ph { color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="win">
+    <div class="titlebar">Vendor portal — Payment details <span class="ctl">— ▢ ✕</span></div>
+    <div class="form">
+      <div class="row"><label>Billing email</label><div class="input focus"><span class="caret" id="caret"></span></div></div>
+      <div class="row"><label>IBAN</label><div class="input"><span class="ph">DE00 0000 0000 0000 0000 00</span></div></div>
+      <div class="row"><label>Reference ticket</label><div class="input"><span class="ph">https://</span></div></div>
+      <div class="row"><label>Invoice</label><div class="input"><span class="ph">Attach a file…</span></div></div>
+    </div>
+  </div>
+  <iframe id="popup"></iframe>
+  <script>
+    const theme = new URLSearchParams(location.search).get('theme') || 'dark';
+    document.documentElement.dataset.theme = theme;
+    const r = document.getElementById('caret').getBoundingClientRect();
+    const f = document.getElementById('popup');
+    f.style.left = (r.left - 16) + 'px';
+    f.style.top = (r.bottom + 10 - 16) + 'px';
+    f.style.colorScheme = theme;
+    f.src = `../ui/index.html?theme=${theme}&stack=6,11,1,4&sel=1`;
+  </script>
+</body>
+</html>

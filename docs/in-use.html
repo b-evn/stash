@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>stash in use</title>
+<style>
+  @font-face { font-family: "Geist"; src: url("../ui/fonts/geist.woff2") format("woff2"); font-weight: 100 900; }
+  :root { --bg: #fff; --fg: #09090b; --muted: #71717a; --border: #e4e4e7; --soft: #f4f4f5; --wall: radial-gradient(700px 420px at 15% 0%, #e0e7ff, transparent 65%), radial-gradient(600px 400px at 95% 100%, #fde2e4, transparent 65%), #eef0f4; }
+  :root[data-theme="dark"] { --bg: #111113; --fg: #fafafa; --muted: #a1a1aa; --border: #27272a; --soft: #18181b; --wall: radial-gradient(700px 420px at 15% 0%, #1e1b4b, transparent 65%), radial-gradient(600px 400px at 95% 100%, #3b0a1a, transparent 65%), #09090b; }
+  * { box-sizing: border-box; }
+  html, body { width: 640px; height: 440px; }
+  body { margin: 0; position: relative; background: var(--wall); font: 14px/1.6 "Geist", system-ui, sans-serif; color: var(--fg); overflow: hidden; }
+  .win { position: absolute; left: 20px; top: 20px; width: 600px; height: 600px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 30px 80px -20px rgba(0,0,0,.35); overflow: hidden; }
+  .titlebar { height: 38px; display: flex; align-items: center; padding: 0 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--soft); }
+  .titlebar .ctl { margin-left: auto; display: flex; gap: 22px; letter-spacing: 2px; }
+  .field { display: flex; gap: 12px; padding: 10px 24px; border-bottom: 1px solid var(--border); }
+  .field b { width: 64px; font-weight: 500; color: var(--muted); }
+  .chip { padding: 0 8px; border-radius: 6px; background: var(--soft); border: 1px solid var(--border); font-size: 13px; }
+  .body { padding: 18px 24px; white-space: pre-wrap; }
+  .caret { display: inline-block; width: 1.5px; height: 1.25em; background: var(--fg); vertical-align: -3px; margin-left: 1px; }
+  iframe { position: absolute; border: 0; width: 416px; height: 400px; background: transparent; }
+</style>
+</head>
+<body>
+  <div class="win">
+    <div class="titlebar">Mail — New message <span class="ctl">— ▢ ✕</span></div>
+    <div class="field"><b>To</b><span class="chip">sam@acme-industries.com</span></div>
+    <div class="body">Hi Sam, here's the invoice: <span class="caret" id="caret"></span></div>
+  </div>
+  <iframe id="popup"></iframe>
+  <script>
+    const theme = new URLSearchParams(location.search).get('theme') || 'light';
+    document.documentElement.dataset.theme = theme;
+    const r = document.getElementById('caret').getBoundingClientRect();
+    const f = document.getElementById('popup');
+    f.style.left = (r.left - 16) + 'px';
+    f.style.top = (r.bottom + 4 - 16) + 'px';
+    f.style.colorScheme = theme;
+    f.src = `../ui/index.html?theme=${theme}&q=inv`;
+  </script>
+</body>
+</html>
