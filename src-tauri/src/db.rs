@@ -158,6 +158,11 @@ impl Db {
             .map(|n| n > 0)
     }
 
+    /// Stores the text recognized in an image clip, which arrives after the clip is saved.
+    pub fn set_ocr(&self, key: &str, text: &str) -> rusqlite::Result<()> {
+        self.conn().execute("UPDATE entries SET ocr_text = ?2 WHERE key = ?1", params![key, text]).map(|_| ())
+    }
+
     pub fn mark_used(&self, id: i64, now: i64) -> rusqlite::Result<()> {
         self.conn()
             .execute("UPDATE entries SET uses = uses + 1, last_used = ?2 WHERE id = ?1", params![id, now])
@@ -271,6 +276,28 @@ mod tests {
         db.add(&img, 2, 10).unwrap();
         let l = db.list().unwrap();
         assert_eq!(l.len(), 1);
+        assert_eq!((l[0].ocr_text.as_str(), l[0].last_used), ("receipt", 2));
+    }
+
+    #[test]
+    fn recognized_text_arrives_after_the_image() {
+        let db = Db::in_memory().unwrap();
+        let img = Entry {
+            key: "i:1".into(),
+            kind: "image".into(),
+            text: String::new(),
+            ocr_text: String::new(),
+            data: Some(vec![1]),
+            thumb: None,
+            width: Some(1),
+            height: Some(1),
+            bytes: 1,
+        };
+        db.add(&img, 1, 10).unwrap();
+        assert_eq!(db.list().unwrap()[0].ocr_text, "");
+        db.set_ocr("i:1", "receipt").unwrap();
+        db.add(&img, 2, 10).unwrap();
+        let l = db.list().unwrap();
         assert_eq!((l[0].ocr_text.as_str(), l[0].last_used), ("receipt", 2));
     }
 
