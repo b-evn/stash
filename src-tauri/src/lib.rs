@@ -48,24 +48,24 @@ struct Placement {
     gap: i32,
 }
 
+// The clip at the front of the queue is always the one on the clipboard.
 #[derive(Default)]
 struct Stack {
     queue: VecDeque<i64>,
-    total: usize,
+    done: usize,
     watch: Option<platform::PasteWatch>,
 }
 
 #[derive(Serialize, Clone)]
 struct StackStatus {
     ids: Vec<i64>,
-    total: usize,
+    done: usize,
 }
 
 struct AppState {
     stack: Mutex<Stack>,
     pasted: Sender<()>,
     db: Arc<Db>,
-    on_clipboard: Mutex<Option<i64>>,
     quiet_until: Arc<AtomicI64>,
     target: Mutex<isize>,
     placement: Mutex<Option<Placement>>,
@@ -138,7 +138,6 @@ fn put_on_clipboard(state: &AppState, id: i64) -> Result<(), String> {
     state.quiet_until.store(now_ms() + ECHO_MS, Ordering::Relaxed);
     let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     capture::write(&mut cb, &p.kind, &p.text, p.data.as_deref())?;
-    *state.on_clipboard.lock().unwrap() = Some(id);
     state.db.mark_used(id, now_ms()).map_err(|e| e.to_string())
 }
 
@@ -155,13 +154,7 @@ fn paste_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<(), Str
 fn stack_status(app: &AppHandle) -> StackStatus {
     let st = app.state::<AppState>();
     let s = st.stack.lock().unwrap();
-    let mut ids: Vec<i64> = s.queue.iter().copied().collect();
-    if let Some(cur) = *st.on_clipboard.lock().unwrap() {
-        if s.watch.is_some() {
-            ids.insert(0, cur);
-        }
-    }
-    StackStatus { ids, total: s.total }
+    StackStatus { ids: s.queue.iter().copied().collect(), done: s.done }
 }
 
 fn emit_stack(app: &AppHandle) {
@@ -169,66 +162,83 @@ fn emit_stack(app: &AppHandle) {
 }
 
 fn end_stack(app: &AppHandle) {
-    {
-        let st = app.state::<AppState>();
-        let mut s = st.stack.lock().unwrap();
-        s.queue.clear();
-        s.total = 0;
-        s.watch = None;
-    }
+    *app.state::<AppState>().stack.lock().unwrap() = Stack::default();
     emit_stack(app);
 }
 
 fn stop_running_stack(app: &AppHandle) {
-    if app.state::<AppState>().stack.lock().unwrap().watch.is_some() {
+    if !app.state::<AppState>().stack.lock().unwrap().queue.is_empty() {
         end_stack(app);
     }
 }
 
-fn advance_stack(app: &AppHandle) {
-    let st = app.state::<AppState>();
-    let next = st.stack.lock().unwrap().queue.pop_front();
-    match next {
-        Some(id) => {
-            if put_on_clipboard(&st, id).is_err() {
-                return advance_stack(app);
-            }
-            let mut s = st.stack.lock().unwrap();
+fn load_front(st: &AppState, s: &mut Stack) {
+    while let Some(&id) = s.queue.front() {
+        if put_on_clipboard(st, id).is_ok() {
             if s.watch.is_none() {
                 s.watch = Some(platform::watch_pastes(st.pasted.clone()));
             }
-            drop(s);
-            emit_stack(app);
+            return;
         }
-        None => end_stack(app),
+        s.queue.pop_front();
     }
+    *s = Stack::default();
+}
+
+fn advance_stack(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    {
+        let mut s = st.stack.lock().unwrap();
+        if s.queue.pop_front().is_none() {
+            return;
+        }
+        s.done += 1;
+        load_front(&st, &mut s);
+    }
+    emit_stack(app);
+}
+
+fn toggle_in_stack(app: &AppHandle, id: i64) {
+    let state = app.state::<AppState>();
+    {
+        let mut s = state.stack.lock().unwrap();
+        match s.queue.iter().position(|&x| x == id) {
+            Some(0) => {
+                s.queue.pop_front();
+                load_front(&state, &mut s);
+            }
+            Some(i) => {
+                s.queue.remove(i);
+            }
+            None => {
+                s.queue.push_back(id);
+                if s.queue.len() == 1 {
+                    load_front(&state, &mut s);
+                }
+            }
+        }
+    }
+    emit_stack(app);
 }
 
 #[tauri::command]
-fn start_stack(app: AppHandle, state: State<AppState>, ids: Vec<i64>) -> Result<(), String> {
-    let (&first, rest) = ids.split_first().ok_or("stack is empty")?;
-    {
-        let mut s = state.stack.lock().unwrap();
-        s.watch = None;
-        s.queue = rest.iter().copied().collect();
-        s.total = ids.len();
-    }
-    put_on_clipboard(&state, first)?;
+fn toggle_stack(app: AppHandle, id: i64) -> StackStatus {
+    toggle_in_stack(&app, id);
+    stack_status(&app)
+}
+
+#[tauri::command]
+fn paste_stack(app: AppHandle, state: State<AppState>) {
     hide_popup(&app);
     let target = *state.target.lock().unwrap();
-    let app = app.clone();
+    if target == 0 {
+        return;
+    }
     thread::spawn(move || {
-        if target != 0 {
-            platform::paste_into(target);
-            thread::sleep(Duration::from_millis(150));
-            advance_stack(&app);
-        } else {
-            let st = app.state::<AppState>();
-            st.stack.lock().unwrap().watch = Some(platform::watch_pastes(st.pasted.clone()));
-            emit_stack(&app);
-        }
+        platform::paste_into(target);
+        thread::sleep(Duration::from_millis(150));
+        advance_stack(&app);
     });
-    Ok(())
 }
 
 #[tauri::command]
@@ -239,26 +249,6 @@ fn cancel_stack(app: AppHandle) {
 #[tauri::command]
 fn get_stack(app: AppHandle) -> StackStatus {
     stack_status(&app)
-}
-
-#[tauri::command]
-fn paste_joined(app: AppHandle, state: State<AppState>, ids: Vec<i64>) -> Result<(), String> {
-    stop_running_stack(&app);
-    let mut parts = Vec::new();
-    for id in ids {
-        if let Some(p) = state.db.payload(id).map_err(|e| e.to_string())? {
-            if p.kind != "image" && p.kind != "file" {
-                parts.push(p.text.trim_end_matches(['\r', '\n']).to_string());
-            }
-            let _ = state.db.mark_used(id, now_ms());
-        }
-    }
-    state.quiet_until.store(now_ms() + ECHO_MS, Ordering::Relaxed);
-    arboard::Clipboard::new().and_then(|mut c| c.set_text(parts.join("\r\n"))).map_err(|e| e.to_string())?;
-    hide_popup(&app);
-    let target = *state.target.lock().unwrap();
-    thread::spawn(move || platform::paste_into(target));
-    Ok(())
 }
 
 #[tauri::command]
@@ -275,7 +265,10 @@ fn toggle_pin(state: State<AppState>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn delete_clip(state: State<AppState>, id: i64) -> Result<(), String> {
+fn delete_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<(), String> {
+    if state.stack.lock().unwrap().queue.contains(&id) {
+        toggle_in_stack(&app, id);
+    }
     state.db.delete(id).map_err(|e| e.to_string())
 }
 
@@ -384,9 +377,7 @@ impl Watcher {
         if now_ms() < self.quiet_until.load(Ordering::Relaxed) {
             return;
         }
-        if self.app.state::<AppState>().stack.lock().unwrap().watch.is_some() {
-            end_stack(&self.app);
-        }
+        stop_running_stack(&self.app);
         let cfg = self.cfg.read().unwrap_or_else(|e| e.into_inner()).clone();
         if cfg.ignore_sensitive && platform::clipboard_is_sensitive() {
             return;
@@ -509,8 +500,8 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
-            list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, start_stack,
-            cancel_stack, get_stack, paste_joined, reveal_in_explorer, open_url, copy_text, copy_fence
+            list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, toggle_stack,
+            paste_stack, cancel_stack, get_stack, reveal_in_explorer, open_url, copy_text, copy_fence
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::Focused(false) = event {
@@ -533,7 +524,6 @@ pub fn run() {
             app.manage(AppState {
                 stack: Mutex::new(Stack::default()),
                 pasted,
-                on_clipboard: Mutex::new(None),
                 db: db.clone(),
                 quiet_until: quiet_until.clone(),
                 target: Mutex::new(0),
@@ -558,9 +548,7 @@ pub fn run() {
             thread::spawn(move || {
                 for () in pastes {
                     thread::sleep(Duration::from_millis(120));
-                    if handle.state::<AppState>().stack.lock().unwrap().watch.is_some() {
-                        advance_stack(&handle);
-                    }
+                    advance_stack(&handle);
                 }
             });
 

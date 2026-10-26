@@ -17,13 +17,13 @@ with plain `Ctrl+V`, in any app. Made for forms: email, Tab, Ctrl+V, IBAN,
 Tab, Ctrl+V…
 
 1. In the popup, `Shift+Enter` (or the row's stack button) adds a clip. It
-   gets a number, and the footer becomes the stack bar.
-2. `Enter` pastes clip 1 and closes the popup. Each `Ctrl+V` after that pastes
-   the next clip.
+   gets a number, and the footer becomes the stack bar. Clip 1 goes straight
+   onto the clipboard.
+2. Close the popup and press `Ctrl+V`: it pastes clip 1. The next `Ctrl+V`
+   pastes clip 2, then clip 3, and so on. (`Enter` in the popup pastes the
+   next clip too.)
 3. It ends after the last clip, when you copy something yourself, or with the
    × in the stack bar (open the popup to see what's next).
-
-`Ctrl+Shift+Enter` instead pastes all text clips at once, one per line.
 
 stash never intercepts `Ctrl+V`: while a stack runs it only notices that you
 pasted and then puts the next clip on the clipboard.
@@ -37,18 +37,17 @@ pasted and then puts the next clip on the clipboard.
 | `Ctrl+Alt+V` | open / close the popup (configurable) |
 | type | search |
 | `↑` `↓` · `Ctrl+J/K` | move |
-| `Enter` | paste |
+| `Enter` | paste (with a stack: paste its next clip) |
 | `Ctrl+1`…`9` | paste the numbered row |
 | `Ctrl+Enter` | copy only, don't paste |
 | `Shift+Enter` | add to / remove from the paste stack |
-| `Ctrl+Shift+Enter` | paste the stack's text clips at once |
 | `Ctrl+P` | pin / unpin (pinned clips are never pruned) |
 | `Ctrl+D` · `Del` (empty search) | delete |
 | `Tab` / `Shift+Tab` | cycle tabs: all · text · links · code · images · files |
 | `Ctrl+S` | cycle sort: recent · frequent · a–z · largest |
 | `Ctrl+T` | theme: auto · dark · light |
 | `Backspace` (empty search) | remove the last filter chip |
-| `Esc` | clear search, then the stack, then close |
+| `Esc` | clear search, then close |
 
 ### Search
 
