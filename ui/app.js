@@ -297,6 +297,9 @@
     return [{ label: 'HEX', value: hex }, { label: 'RGB', value: rgb }, { label: 'HSL', value: hsl }];
   }
 
+  // Short labels for the tile of a code clip, in the style of file extension badges.
+  const LANG_BADGE = { json: 'JSON', php: 'PHP', html: 'HTML', rust: 'RS', python: 'PY', go: 'GO', java: 'JAVA', cpp: 'C++', sql: 'SQL', js: 'JS', bash: 'SH' };
+
   function guessLang(text) {
     const t = text.trim();
     if (/^[[{]/.test(t)) {
@@ -551,6 +554,8 @@
       if (paths.length > 1) t.innerHTML = svg('files');
       else if (ext) t.appendChild(el('span', 'ext')).textContent = ext.toUpperCase();
       else t.innerHTML = svg('file');
+    } else if (c.kind === 'code' && LANG_BADGE[guessLang(c.text)]) {
+      t.appendChild(el('span', 'ext')).textContent = LANG_BADGE[guessLang(c.text)];
     } else {
       t.innerHTML = svg(ICON[c.kind] ? c.kind : 'text');
     }

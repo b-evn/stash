@@ -121,6 +121,9 @@ opaque and PNG when it has transparency, usually a few KB (fonts are only
 loaded to draw their sample, then unloaded). SVG is drawn as an
 image, so scripts in it never run. PDFs and videos keep their file icon.
 
+Code clips show the language stash guesses in their icon (`JS`, `PY`, `RS`,
+`SQL`, `JSON`…), the same guess it uses for copying as a fenced block.
+
 The pin button next to the tabs shows pinned clips only. Hover a row for its
 quick actions: open a link in your browser, show a file in Explorer or Finder, copy code
 as a fenced block, copy a colour as HEX, RGB or HSL, pin or delete.
