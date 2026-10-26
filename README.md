@@ -54,7 +54,7 @@ this needs Accessibility access (see below).
 | `Ctrl+D` · `Del` (empty search) | delete (macOS also `⌘⌫`) |
 | `Tab` / `Shift+Tab` | cycle tabs: all · text · links · code · images · files |
 | `Ctrl+S` | cycle sort: recent · frequent · a–z · largest |
-| `Ctrl+T` | theme: auto · dark · light |
+| `Ctrl+T` | switch between dark and light (starts out like your system) |
 | `Ctrl+,` | settings |
 | `Backspace` (empty search) | remove the last filter chip |
 | `Esc` | clear search, then close |
