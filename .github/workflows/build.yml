@@ -20,9 +20,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Search tests
+      - name: UI tests
         working-directory: ui
-        run: node search.test.js
+        run: node search.test.js && node secrets.test.js
       - name: Rust tests
         run: cargo test --lib
       - name: Install Tauri CLI

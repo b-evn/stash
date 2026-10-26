@@ -82,6 +82,25 @@ to `false` in the config to turn it off.
 
 <p align="center"><img src="docs/showcase.png" width="660" alt="filter chips, dark and light"></p>
 
+### Secrets
+
+Secrets in the list are blurred, so they don't show at a glance when someone
+looks over your shoulder or you share your screen. Hover the blur to read it.
+Just enough stays visible to tell what the clip is and which one:
+
+| looks like | stays visible | example |
+| --- | --- | --- |
+| IBAN (checksum valid) | country, check digits, last 4 | `DE89░░░░░░░░░░3000` |
+| card number (Luhn valid) | last 4 | `░░░░ ░░░░ ░░░░ 1111` |
+| API token with a known prefix (`sk-`, `ghp_`, `AKIA`, `xoxb-`, JWT `eyJ`…) | prefix, last 4 | `ghp_░░░░░░░░2345` |
+| `password=`, `api_key:`, `"client_secret":`, `?access_token=`… | the name | `DB_PASSWORD=░░░░░░` |
+| password in a URL | everything else | `postgres://app:░░░░@db:5432` |
+| `Bearer` / `Basic` header value | the scheme | `Bearer ░░░░░░░░` |
+| private key (`-----BEGIN … PRIVATE KEY-----`) | the BEGIN line | |
+
+This only changes how the list shows them; pasting gives you the clip as it
+was copied. It also works on text recognized in screenshots.
+
 The pin button next to the tabs shows pinned clips only. Hover a row for its
 quick actions: open a link in your browser, show a file in Explorer or Finder, copy code
 as a fenced block, copy a colour as HEX, RGB or HSL, pin or delete.
@@ -162,7 +181,7 @@ Accessibility again. Every push to `main` also builds both in GitHub
 Actions (artifacts `stash-windows` and `stash-macos`), so you don't need a
 local toolchain.
 
-Tests: `node ui/search.test.js` and `cd src-tauri && cargo test --lib`.
+Tests: `node ui/search.test.js`, `node ui/secrets.test.js` and `cd src-tauri && cargo test --lib`.
 `ui/index.html` also opens in a plain browser with demo data for UI work;
 `docs/showcase.html`, `docs/in-use.html` and `docs/stack.html` are the scenes for the screenshots.
 

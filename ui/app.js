@@ -329,18 +329,27 @@
     placeHighlight(true);
   }
 
-  function paint(node, text) {
+  // Writes text into node with search hits marked and secrets blurred
+  // (all of it when hideAll), each secret in one span that unblurs on hover.
+  function paint(node, text, hideAll = false) {
     const s = text.slice(0, 300);
     const hits = query() ? StashSearch.hits(query(), s) : new Set();
-    let run = '', on = false;
+    const blur = hideAll ? [[0, s.length]] : StashSecrets.find(s);
+    let run = '', on = false, hidden = false, into = node;
     const flush = () => {
       if (!run) return;
-      if (on) { const m = document.createElement('mark'); m.textContent = run; node.appendChild(m); }
-      else node.appendChild(document.createTextNode(run));
+      if (on) { const m = document.createElement('mark'); m.textContent = run; into.appendChild(m); }
+      else into.appendChild(document.createTextNode(run));
       run = '';
     };
     for (let i = 0; i < s.length; i++) {
       const hit = hits.has(i);
+      const secret = blur.some(([a, b]) => i >= a && i < b);
+      if (secret !== hidden) {
+        flush();
+        hidden = secret;
+        into = secret ? node.appendChild(el('span', 'secret')) : node;
+      }
       if (hit !== on) { flush(); on = hit; }
       run += s[i];
     }
@@ -831,7 +840,7 @@
     const d = describe(c);
     const main = el('div', 'main');
     paint(main.appendChild(el('span', 'title')), d.title);
-    if (d.sub) paint(main.appendChild(el('span', 'sub')), d.sub);
+    if (d.sub) paint(main.appendChild(el('span', 'sub')), d.sub, c.kind !== 'image' && StashSecrets.privateKey(c.text));
     if (i === sel && shiftDown && c.kind === 'image' && c.thumb) {
       row.classList.add('expanded');
       const box = main.appendChild(el('div', 'preview'));
@@ -1208,6 +1217,8 @@
       c(13, 'image', '', 5000, { thumb: whiteboard, width: 1200, height: 800, bytes: 98000, ocr_text: 'Checkout flow: cart → payment → receipt' }),
       c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
       c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
+      // Made up. Split in two so secret scanners don't take it for a real key.
+      c(16, 'code', 'STRIPE_SECRET_KEY=sk_' + 'live_51NzQ8vKd2Lr7XbW4eTfYp9Hm\nDATABASE_URL=postgres://app:Tr0ub4dor@db.internal:5432/main', 14000),
     ];
   }
 })();
