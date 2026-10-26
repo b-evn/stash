@@ -38,6 +38,8 @@
     stack: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
     stackAdd: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/>',
     stackRemove: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M21 12h-6"/>',
+    external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+    folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m10 10 4 4"/><path d="M14 10v4h-4"/>',
   };
   const svg = (name) => `<svg class="icon" viewBox="0 0 24 24">${ICON[name]}</svg>`;
 
@@ -253,6 +255,11 @@
       action(c.pinned ? 'pinOff' : 'pin', c.pinned ? 'Unpin (Ctrl+P)' : 'Pin (Ctrl+P)', () => pin(c)),
       action('trash', 'Delete (Ctrl+D)', () => remove(c)),
     );
+    if (c.kind === 'link') {
+      acts.prepend(action('external', 'Open link', () => run('open_url', { id: c.id })));
+    } else if (c.kind === 'file' || c.kind === 'path') {
+      acts.prepend(action('folder', 'Show in Explorer', () => run('reveal_in_explorer', { id: c.id })));
+    }
 
     row.append(tile(c), main, trail);
     row.addEventListener('mousemove', (e) => { setShift(e.shiftKey); const n = Number(row.dataset.i); if (sel !== n) select(n, false); });

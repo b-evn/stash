@@ -74,8 +74,10 @@ turn it off.
 
 <p align="center"><img src="docs/showcase.png" width="660" alt="filter chips, dark and light"></p>
 
-The pin button next to the tabs shows pinned clips only. The tray icon has: pause capturing, start with Windows, clear history (keeps
-pinned), quit.
+The pin button next to the tabs shows pinned clips only. Hover a row for its
+quick actions: open a link in your browser, show a file in Explorer, stack,
+pin or delete. The tray icon has: pause capturing, start with Windows, clear
+history (keeps pinned), quit.
 
 ## Config
 
