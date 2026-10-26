@@ -611,6 +611,15 @@ pub fn run() {
                 }
             });
 
+            // Screenshots saved as files go on the clipboard, so they are kept and ready to paste.
+            let (live, off) = (cfg.clone(), paused.clone());
+            platform::watch_screenshots(move |path| {
+                let on = live.read().unwrap_or_else(|e| e.into_inner()).capture_screenshots;
+                if on && !off.load(Ordering::Relaxed) && !platform::copy_image_file(path) {
+                    eprintln!("stash: could not read screenshot {}", path.display());
+                }
+            });
+
             let handle = app.handle().clone();
             thread::spawn(move || {
                 let watcher = Watcher { app: handle, db, paused, quiet_until, cfg };

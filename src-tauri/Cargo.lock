@@ -3525,6 +3525,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "clipboard-master",
+ "libc",
  "objc2",
  "objc2-app-kit",
  "objc2-application-services",
