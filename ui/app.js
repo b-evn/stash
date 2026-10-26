@@ -9,7 +9,6 @@
   const THEMES = ['auto', 'dark', 'light'];
   const MAX_ROWS = 200;
   const DAY = 864e5;
-  const TEXTUAL = new Set(['text', 'link', 'code', 'email', 'number', 'color', 'path']);
 
   const ICON = {
     text: '<path d="M17 6.1H3"/><path d="M21 12.1H3"/><path d="M15.1 18H3"/>',
@@ -62,11 +61,11 @@
   let filter = 'all';
   let pinnedOnly = false;
   let chips = [];
-  let stack = [];
   let colorMenuFor = null;
   let menuCtl = null;
   let clickGuard = null;
-  let running = { ids: [], total: 0 };
+  let stack = { ids: [], done: 0 };
+  let mockStack = null;
   let sort = store.get('sort', 'recent');
   if (!StashSearch.SORTS.includes(sort)) sort = 'recent';
   let theme = params.get('theme') || store.get('theme', 'auto');
@@ -360,8 +359,8 @@
     } else {
       t.innerHTML = svg(ICON[c.kind] ? c.kind : 'text');
     }
-    const pos = stack.indexOf(c.id);
-    if (pos >= 0) t.appendChild(el('span', 'badge')).textContent = String(pos + 1);
+    const pos = stack.ids.indexOf(c.id);
+    if (pos >= 0) t.appendChild(el('span', 'badge')).textContent = String(stack.done + pos + 1);
     return t;
   }
 
@@ -431,7 +430,7 @@
   const clearStackItem = () => ({
     icon: 'stackRemove',
     label: 'Clear stack',
-    action: () => { stack = []; refresh(true); },
+    action: cancelStack,
   });
 
   const hideItem = () => ({
@@ -446,7 +445,7 @@
     items.push(showItem(), pinnedItem(), sortItem(), themeItem());
     const extra = [];
     if (!noClearSearch && (q.value || chips.length)) extra.push(clearSearchItem());
-    if (!noClearStack && stack.length) extra.push(clearStackItem());
+    if (!noClearStack && stack.ids.length) extra.push(clearStackItem());
     if (extra.length) items.push(menuSep(), ...extra);
     items.push(menuSep(), hideItem());
     return items;
@@ -482,7 +481,7 @@
       }
     }
     if (special) items.push(menuSep(), special);
-    const inStack = stack.includes(c.id);
+    const inStack = stack.ids.includes(c.id);
     items.push(
       menuSep(),
       { icon: inStack ? 'stackRemove' : 'stackAdd', label: inStack ? 'Remove from stack' : 'Add to stack', hint: '⇧+↵', action: () => toggleStack(c) },
@@ -517,24 +516,7 @@
 
   function stackMenu() {
     const lead = [];
-    if (running.ids.length) {
-      lead.push({
-        icon: 'ban',
-        label: 'Stop the stack',
-        action: () => { call('cancel_stack'); running = { ids: [], total: 0 }; renderFooter(); },
-      });
-    }
-    if (stack.length) {
-      lead.push({ icon: 'stack', label: 'Paste stack', hint: '↵', action: startStack });
-      if (stack.length > 1 && stack.every((id) => byId(id) && TEXTUAL.has(byId(id).kind))) {
-        lead.push({ icon: 'quote', label: 'Join as text', hint: 'Ctrl+⇧+↵', action: joinStack });
-      }
-      lead.push({
-        icon: 'stackRemove',
-        label: 'Clear stack',
-        action: () => { stack = []; refresh(true); },
-      });
-    }
+    if (stack.ids.length) lead.push({ icon: 'stack', label: 'Paste next', hint: '↵', action: pasteStack }, clearStackItem());
     return appMenu({ lead, noClearStack: true });
   }
 
@@ -862,7 +844,7 @@
     if (c.pinned) info.innerHTML = svg('pin');
     info.appendChild(el('span')).textContent = age(c.last_used);
     const acts = trail.appendChild(el('span', 'acts'));
-    const inStack = stack.includes(c.id);
+    const inStack = stack.ids.includes(c.id);
     acts.append(
       action(inStack ? 'stackRemove' : 'stackAdd', inStack ? 'Remove from stack (Shift+Enter)' : 'Add to stack (Shift+Enter)', () => toggleStack(c)),
       action(c.pinned ? 'pinOff' : 'pin', c.pinned ? 'Unpin (Ctrl+P)' : 'Pin (Ctrl+P)', () => pin(c)),
@@ -885,7 +867,7 @@
       const n = Number(row.dataset.i);
       if (sel !== n) select(n, false);
     });
-    row.addEventListener('click', () => (stack.length ? toggleStack(c) : paste(c)));
+    row.addEventListener('click', () => (stack.ids.length ? toggleStack(c) : paste(c)));
     return row;
   }
 
@@ -992,36 +974,24 @@
   }
 
   function renderFooter() {
-    const building = stack.length > 0;
-    const live = !building && running.ids.length > 0;
-    hintsEl.hidden = building || live;
-    stackEl.hidden = !(building || live);
+    const on = stack.ids.length > 0;
+    hintsEl.hidden = on;
+    stackEl.hidden = !on;
     stackEl.textContent = '';
-    if (!building && !live) return;
+    if (!on) return;
 
     const left = stackEl.appendChild(el('span', 'stack-label', svg('stack')));
-    if (building) {
-      left.appendChild(el('span')).textContent = 'Stack';
-      left.appendChild(el('span', 'count')).textContent = String(stack.length);
-    } else {
-      const next = running.total - running.ids.length + 1;
-      const c = byId(running.ids[0]);
-      left.appendChild(el('span')).textContent = `Next ${next} of ${running.total}`;
+    if (stack.done) {
+      const c = byId(stack.ids[0]);
+      left.appendChild(el('span')).textContent = `Next ${stack.done + 1} of ${stack.done + stack.ids.length}`;
       if (c) left.appendChild(el('span', 'next')).textContent = describe(c).title;
-    }
-    const clear = stackEl.appendChild(action('x', building ? 'Clear stack (Esc)' : 'Stop the stack', () => {
-      if (building) { stack = []; refresh(true); } else { call('cancel_stack'); running = { ids: [], total: 0 }; renderFooter(); }
-    }));
-    clear.classList.add('small');
-    stackEl.appendChild(el('span', 'spacer'));
-    if (building) {
-      stackEl.appendChild(el('span', 'hint', '<kbd>↵</kbd>Paste in order'));
-      if (stack.every((id) => byId(id) && TEXTUAL.has(byId(id).kind)) && stack.length > 1) {
-        stackEl.appendChild(el('span', 'hint', '<kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>↵</kbd>Join'));
-      }
     } else {
-      stackEl.appendChild(el('span', 'hint')).textContent = 'Ctrl+V pastes the next';
+      left.appendChild(el('span')).textContent = 'Stack';
+      left.appendChild(el('span', 'count')).textContent = String(stack.ids.length);
     }
+    stackEl.appendChild(action('x', 'Clear stack', cancelStack)).classList.add('small');
+    stackEl.appendChild(el('span', 'spacer'));
+    stackEl.appendChild(el('span', 'hint', '<kbd>Ctrl</kbd><kbd>V</kbd>Paste next'));
   }
 
   function refresh(keepSel = false) {
@@ -1030,7 +1000,7 @@
     if (!keepSel) sel = 0;
     sel = Math.min(sel, Math.max(Math.min(results.length, MAX_ROWS) - 1, 0));
     sortBtn.innerHTML = svg('sort') + SORT_LABEL[sort];
-    $('esc').classList.toggle('on', Boolean(query() || stack.length));
+    $('esc').classList.toggle('on', Boolean(query()));
     renderChips();
     renderTabs(true);
     renderList();
@@ -1041,22 +1011,10 @@
   const paste = (c) => run('paste_clip', { id: c.id });
   const copyOnly = (c) => run('copy_clip', { id: c.id });
 
-  function toggleStack(c) {
-    stack = stack.includes(c.id) ? stack.filter((id) => id !== c.id) : [...stack, c.id];
-    refresh(true);
-  }
-
-  function startStack() {
-    const ids = stack;
-    stack = [];
-    run('start_stack', { ids });
-  }
-
-  function joinStack() {
-    const ids = stack;
-    stack = [];
-    run('paste_joined', { ids });
-  }
+  const setStack = (s) => { stack = s || { ids: [], done: 0 }; refresh(true); };
+  const toggleStack = (c) => run('toggle_stack', { id: c.id }).then((s) => s && setStack(s));
+  const cancelStack = () => run('cancel_stack').then(() => setStack());
+  const pasteStack = () => run('paste_stack');
 
   function pin(c) {
     c.pinned = !c.pinned;
@@ -1066,9 +1024,9 @@
 
   function remove(c) {
     const idx = results.findIndex((r) => r.clip === c);
-    const inStack = stack.includes(c.id);
+    const inStack = stack.ids.includes(c.id);
     clips = clips.filter((x) => x !== c);
-    stack = stack.filter((id) => id !== c.id);
+    stack = { ...stack, ids: stack.ids.filter((id) => id !== c.id) };
     run('delete_clip', { id: c.id });
     if (idx < 0 || inStack || results.length > MAX_ROWS) { refresh(true); return; }
 
@@ -1107,13 +1065,11 @@
     else if (e.key === 'ArrowUp' || (ctrl && e.key === 'k')) move(-1);
     else if (e.key === 'PageDown') move(6);
     else if (e.key === 'PageUp') move(-6);
-    else if (e.key === 'Enter' && e.shiftKey && ctrl) { if (stack.length) joinStack(); }
     else if (e.key === 'Enter' && e.shiftKey) { if (cur) toggleStack(cur); }
     else if (e.key === 'Enter' && ctrl) { if (cur) copyOnly(cur); }
-    else if (e.key === 'Enter') { if (stack.length) startStack(); else if (cur) paste(cur); }
+    else if (e.key === 'Enter') { if (stack.ids.length) pasteStack(); else if (cur) paste(cur); }
     else if (e.key === 'Escape') {
       if (q.value || chips.length) { q.value = ''; chips = []; refresh(); }
-      else if (stack.length) { stack = []; refresh(true); }
       else run('hide_window');
     }
     else if (e.key === 'Backspace' && !q.value && q.selectionStart === 0 && chips.length) { chips.pop(); refresh(); }
@@ -1179,9 +1135,8 @@
     absorb(true);
     filter = params.get('tab') || 'all';
     pinnedOnly = false;
-    stack = (params.get('stack') || '').split(',').filter(Boolean).map(Number);
     try { clips = await call('list_clips'); } catch (e) { console.error(e); clips = []; }
-    try { running = (await call('get_stack')) || running; } catch {}
+    try { stack = (await call('get_stack')) || stack; } catch {}
     const card = $('card');
     card.classList.remove('enter');
     void card.offsetWidth;
@@ -1204,16 +1159,20 @@
 
   applyTheme();
   listen('stash-show', open);
-  listen('stash-stack', (e) => { running = e.payload; renderFooter(); });
+  listen('stash-stack', (e) => setStack(e.payload));
   window.addEventListener('focus', () => q.focus());
   open();
 
-  function mockInvoke(cmd) {
+  function mockInvoke(cmd, args) {
     if (cmd === 'list_clips') return Promise.resolve(window.STASH_DEMO || demoClips());
-    if (cmd === 'get_stack') {
-      const ids = (params.get('running') || '').split(',').filter(Boolean).map(Number);
-      return Promise.resolve({ ids, total: ids.length ? Number(params.get('total')) || ids.length : 0 });
+    if (!mockStack) mockStack = { ids: (params.get('stack') || '').split(',').filter(Boolean).map(Number), done: Number(params.get('done')) || 0 };
+    if (cmd === 'toggle_stack') {
+      const has = mockStack.ids.includes(args.id);
+      mockStack.ids = has ? mockStack.ids.filter((id) => id !== args.id) : [...mockStack.ids, args.id];
+      if (!mockStack.ids.length) mockStack.done = 0;
     }
+    if (cmd === 'cancel_stack') mockStack = { ids: [], done: 0 };
+    if (cmd === 'get_stack' || cmd === 'toggle_stack') return Promise.resolve({ ...mockStack });
     return Promise.resolve();
   }
 
