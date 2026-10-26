@@ -130,6 +130,10 @@ kbd {
 .title, .sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .title { font-weight: 450; }
 .sub { color: var(--muted-fg); font-size: 12px; margin-top: 1px; }
+/* Blurred with a shadow, not filter, so the text keeps its place in the ellipsis. */
+.secret { color: transparent; text-shadow: 0 0 5px var(--fg); transition: color .15s, text-shadow .15s; }
+.sub .secret { text-shadow: 0 0 5px var(--muted-fg); }
+.secret:hover { color: inherit; text-shadow: none; }
 .mono .title, .mono .sub { font-family: "Geist Mono", "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 12px; }
 mark { background: var(--hit); color: inherit; border-radius: 3px; box-shadow: 0 0 0 1px var(--hit); }
 
