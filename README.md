@@ -154,9 +154,10 @@ cargo tauri build    # Windows: exe + installer · macOS: stash.app + .dmg (in t
 ```
 
 On Windows `target/release/stash.exe` is a single portable file. On macOS
-drag `stash.app` to Applications. The build isn't signed, so the first time
-right-click it and choose Open; each new unsigned build also has to be allowed
-under Accessibility again. Every push to `main` also builds both in GitHub
+drag `stash.app` to Applications. The build is signed ad hoc but not
+notarized, so macOS blocks the first launch: open System Settings → Privacy &
+Security and choose Open Anyway. Each new build also has to be allowed under
+Accessibility again. Every push to `main` also builds both in GitHub
 Actions (artifacts `stash-windows` and `stash-macos`), so you don't need a
 local toolchain.
 
