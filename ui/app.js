@@ -82,6 +82,8 @@
   };
   // On macOS Ctrl+click is a right-click.
   const secondary = (e) => e.button !== 0 || (MAC && e.ctrlKey);
+  // Ctrl+click (⌘-click on macOS) adds a clip to the paste stack.
+  const stackClick = (e) => (MAC ? e.metaKey : e.ctrlKey);
   const noFocusSteal = (b) => b.addEventListener('mousedown', (e) => e.preventDefault());
   const byId = (id) => clips.find((c) => c.id === id);
 
@@ -490,7 +492,7 @@
     const inStack = stack.ids.includes(c.id);
     items.push(
       menuSep(),
-      { icon: inStack ? 'stackRemove' : 'stackAdd', label: inStack ? 'Remove from stack' : 'Add to stack', hint: '⇧+↵', action: () => toggleStack(c) },
+      { icon: inStack ? 'stackRemove' : 'stackAdd', label: inStack ? 'Remove from stack' : 'Add to stack', hint: `${MOD}click`, action: () => toggleStack(c) },
       { icon: c.pinned ? 'pinOff' : 'pin', label: c.pinned ? 'Unpin' : 'Pin', hint: `${MOD}P`, action: () => pin(c) },
       menuSep(),
       { icon: 'trash', label: 'Delete', hint: MAC ? '⌘⌫' : 'Del', danger: true, action: () => remove(c) },
@@ -850,9 +852,7 @@
     if (c.pinned) info.innerHTML = svg('pin');
     info.appendChild(el('span')).textContent = age(c.last_used);
     const acts = trail.appendChild(el('span', 'acts'));
-    const inStack = stack.ids.includes(c.id);
     acts.append(
-      action(inStack ? 'stackRemove' : 'stackAdd', inStack ? 'Remove from stack (Shift+Enter)' : 'Add to stack (Shift+Enter)', () => toggleStack(c)),
       action(c.pinned ? 'pinOff' : 'pin', `${c.pinned ? 'Unpin' : 'Pin'} (${MOD}P)`, () => pin(c)),
       action('trash', `Delete (${MOD}D)`, () => remove(c)),
     );
@@ -873,7 +873,7 @@
       const n = Number(row.dataset.i);
       if (sel !== n) select(n, false);
     });
-    row.addEventListener('click', () => (stack.ids.length ? toggleStack(c) : paste(c)));
+    row.addEventListener('click', (e) => (stackClick(e) ? toggleStack(c) : paste(c)));
     return row;
   }
 
@@ -1071,7 +1071,6 @@
     else if (e.key === 'ArrowUp' || (ctrl && e.key === 'k')) move(-1);
     else if (e.key === 'PageDown') move(6);
     else if (e.key === 'PageUp') move(-6);
-    else if (e.key === 'Enter' && e.shiftKey) { if (cur) toggleStack(cur); }
     else if (e.key === 'Enter' && ctrl) { if (cur) copyOnly(cur); }
     else if (e.key === 'Enter') { if (stack.ids.length) pasteStack(); else if (cur) paste(cur); }
     else if (e.key === 'Escape') {

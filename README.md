@@ -19,9 +19,10 @@ Collect clips in the order you need them, then paste them one after another
 with plain `Ctrl+V` (`⌘V` on macOS), in any app. Made for forms: email, Tab,
 Ctrl+V, IBAN, Tab, Ctrl+V…
 
-1. In the popup, `Shift+Enter` (or the row's stack button) adds a clip. It
-   gets a number, and the footer becomes the stack bar. Clip 1 goes straight
-   onto the clipboard.
+1. In the popup, `Ctrl`-click a clip (`⌘`-click on macOS) to add it. It gets
+   a number, and the footer becomes the stack bar. Clip 1 goes straight onto
+   the clipboard. `Ctrl`-click it again to take it out; a plain click pastes
+   that clip and ends the stack.
 2. Close the popup and press `Ctrl+V`: it pastes clip 1. The next `Ctrl+V`
    pastes clip 2, then clip 3, and so on. (`Enter` in the popup pastes the
    next clip too.)
@@ -48,7 +49,7 @@ this needs Accessibility access (see below).
 | `Enter` | paste (with a stack: paste its next clip) |
 | `Ctrl+1`…`9` | paste the numbered row |
 | `Ctrl+Enter` | copy only, don't paste |
-| `Shift+Enter` | add to / remove from the paste stack |
+| `Ctrl`+click | add to / remove from the paste stack |
 | `Ctrl+P` | pin / unpin (pinned clips are never pruned) |
 | `Ctrl+D` · `Del` (empty search) | delete (macOS also `⌘⌫`) |
 | `Tab` / `Shift+Tab` | cycle tabs: all · text · links · code · images · files |
@@ -83,7 +84,7 @@ to `false` in the config to turn it off.
 
 The pin button next to the tabs shows pinned clips only. Hover a row for its
 quick actions: open a link in your browser, show a file in Explorer or Finder, copy code
-as a fenced block, copy a colour as HEX, RGB or HSL, stack, pin or delete.
+as a fenced block, copy a colour as HEX, RGB or HSL, pin or delete.
 Right-click any clip for the same actions in a stash-native menu, or
 right-click anywhere else for filters, sort, theme and hide (on macOS,
 Ctrl-click works too). The tray icon (menu bar icon on macOS) has: pause
