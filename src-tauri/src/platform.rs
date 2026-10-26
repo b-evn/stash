@@ -195,7 +195,7 @@ mod win {
         thread: u32,
     }
 
-    pub fn watch_pastes(tx: Sender<()>) -> PasteWatch {
+    pub fn watch_pastes(tx: Sender<()>) -> Option<PasteWatch> {
         *PASTED.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
         let (id_tx, id_rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || unsafe {
@@ -206,7 +206,7 @@ mod win {
             while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
             let _ = UnhookWindowsHookEx(hook);
         });
-        PasteWatch { thread: id_rx.recv().unwrap_or(0) }
+        Some(PasteWatch { thread: id_rx.recv().unwrap_or(0) })
     }
 
     impl Drop for PasteWatch {
@@ -524,16 +524,16 @@ mod mac {
         stop: Arc<AtomicBool>,
     }
 
-    pub fn watch_pastes(tx: Sender<()>) -> PasteWatch {
+    // None without Accessibility: creating a keyboard tap then makes macOS ask for Input Monitoring.
+    pub fn watch_pastes(tx: Sender<()>) -> Option<PasteWatch> {
+        if !trusted() {
+            eprintln!("stash: can't watch for pastes, allow stash under Privacy & Security > Accessibility");
+            request_access();
+            return None;
+        }
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = stop.clone();
         std::thread::spawn(move || {
-            // Without Accessibility, creating a keyboard tap makes macOS ask for Input Monitoring.
-            if !trusted() {
-                eprintln!("stash: can't watch for pastes, allow stash under Privacy & Security > Accessibility");
-                request_access();
-                return;
-            }
             let tap = Tap { tx, armed: Cell::new(false), port: Cell::new(ptr::null()) };
             let mask = (1u64 << CGEventType::KeyDown.0) | (1u64 << CGEventType::KeyUp.0);
             let port = unsafe {
@@ -565,7 +565,7 @@ mod mac {
             CGEvent::tap_enable(&port, false);
             port.invalidate();
         });
-        PasteWatch { stop }
+        Some(PasteWatch { stop })
     }
 
     impl Drop for PasteWatch {
@@ -748,7 +748,7 @@ mod other {
     }
 
     pub struct PasteWatch;
-    pub fn watch_pastes(_tx: std::sync::mpsc::Sender<()>) -> PasteWatch {
-        PasteWatch
+    pub fn watch_pastes(_tx: std::sync::mpsc::Sender<()>) -> Option<PasteWatch> {
+        Some(PasteWatch)
     }
 }

@@ -1248,7 +1248,14 @@
     }
     stackEl.appendChild(action('x', 'Clear stack', cancelStack)).classList.add('small');
     stackEl.appendChild(el('span', 'spacer'));
-    stackEl.appendChild(el('span', 'hint', `<kbd>${MAC ? '⌘' : 'Ctrl'}</kbd><kbd>V</kbd>Paste next`));
+    if (stack.blocked) {
+      const allow = stackEl.appendChild(el('button', 'ghost text warn'));
+      allow.textContent = 'Allow Accessibility to paste in order';
+      allow.title = 'Open Privacy & Security > Accessibility and switch on stash';
+      allow.addEventListener('click', () => run('open_access_settings'));
+    } else {
+      stackEl.appendChild(el('span', 'hint', `<kbd>${MAC ? '⌘' : 'Ctrl'}</kbd><kbd>V</kbd>Paste next`));
+    }
   }
 
   function refresh(keepSel = false) {
@@ -1897,7 +1904,7 @@
       if (!mockStack.ids.length) mockStack.done = 0;
     }
     if (cmd === 'cancel_stack') mockStack = { ids: [], done: 0 };
-    if (cmd === 'get_stack' || cmd === 'toggle_stack') return Promise.resolve({ ...mockStack });
+    if (cmd === 'get_stack' || cmd === 'toggle_stack') return Promise.resolve({ ...mockStack, blocked: params.has('blocked') && mockStack.ids.length > 0 });
     return Promise.resolve();
   }
 

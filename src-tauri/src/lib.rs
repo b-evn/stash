@@ -62,6 +62,8 @@ struct Stack {
 struct StackStatus {
     ids: Vec<i64>,
     done: usize,
+    // Nothing is watching for pastes (no Accessibility access), so the stack can't advance.
+    blocked: bool,
 }
 
 struct AppState {
@@ -194,7 +196,7 @@ fn paste_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<(), Str
 fn stack_status(app: &AppHandle) -> StackStatus {
     let st = app.state::<AppState>();
     let s = st.stack.lock().unwrap();
-    StackStatus { ids: s.queue.iter().copied().collect(), done: s.done }
+    StackStatus { ids: s.queue.iter().copied().collect(), done: s.done, blocked: !s.queue.is_empty() && s.watch.is_none() }
 }
 
 fn emit_stack(app: &AppHandle) {
@@ -216,7 +218,7 @@ fn load_front(st: &AppState, s: &mut Stack) {
     while let Some(&id) = s.queue.front() {
         if put_on_clipboard(st, id).is_ok() {
             if s.watch.is_none() {
-                s.watch = Some(platform::watch_pastes(st.pasted.clone()));
+                s.watch = platform::watch_pastes(st.pasted.clone());
             }
             return;
         }
@@ -287,8 +289,20 @@ fn cancel_stack(app: AppHandle) {
 }
 
 #[tauri::command]
-fn get_stack(app: AppHandle) -> StackStatus {
+fn get_stack(app: AppHandle, state: State<AppState>) -> StackStatus {
+    {
+        // Accessibility may have been allowed since the stack started.
+        let mut s = state.stack.lock().unwrap();
+        if !s.queue.is_empty() && s.watch.is_none() {
+            s.watch = platform::watch_pastes(state.pasted.clone());
+        }
+    }
     stack_status(&app)
+}
+
+#[tauri::command]
+fn open_access_settings() {
+    platform::open("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
 }
 
 #[tauri::command]
@@ -670,7 +684,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
             list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, toggle_stack,
-            paste_stack, cancel_stack, get_stack, reveal_in_explorer, open_url, copy_text, copy_fence, visual_source,
+            paste_stack, cancel_stack, get_stack, open_access_settings, reveal_in_explorer, open_url, copy_text, copy_fence, visual_source,
             save_thumb, get_settings,
             set_config, set_autostart, set_paused, clear_history, reveal_config
         ])
