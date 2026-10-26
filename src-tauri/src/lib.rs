@@ -279,6 +279,36 @@ fn delete_clip(state: State<AppState>, id: i64) -> Result<(), String> {
     state.db.delete(id).map_err(|e| e.to_string())
 }
 
+fn clip_path(state: &AppState, id: i64) -> Result<(String, String), String> {
+    let p = state.db.payload(id).map_err(|e| e.to_string())?.ok_or("clip no longer exists")?;
+    let first = p.text.lines().next().unwrap_or("").trim().to_string();
+    Ok((p.kind, first))
+}
+
+#[tauri::command]
+fn reveal_in_explorer(state: State<AppState>, id: i64) -> Result<(), String> {
+    let (kind, path) = clip_path(&state, id)?;
+    if kind != "file" && kind != "path" {
+        return Err("this clip is not a file".into());
+    }
+    if path.is_empty() {
+        return Err("this clip has no path".into());
+    }
+    platform::reveal(&path);
+    Ok(())
+}
+
+#[tauri::command]
+fn open_url(state: State<AppState>, id: i64) -> Result<(), String> {
+    let (kind, url) = clip_path(&state, id)?;
+    if kind != "link" {
+        return Err("this clip is not a link".into());
+    }
+    let url = if url.contains("://") { url } else { format!("https://{url}") };
+    platform::open(&url);
+    Ok(())
+}
+
 #[tauri::command]
 fn hide_window(app: AppHandle) {
     hide_popup(&app);
@@ -436,7 +466,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
             list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, start_stack,
-            cancel_stack, get_stack, paste_joined
+            cancel_stack, get_stack, paste_joined, reveal_in_explorer, open_url
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::Focused(false) = event {

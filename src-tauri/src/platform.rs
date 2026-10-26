@@ -205,6 +205,39 @@ mod win {
             fmt != 0 && IsClipboardFormatAvailable(fmt).is_ok()
         }
     }
+
+    pub fn reveal(path: &str) {
+        use std::process::Command;
+        let path = path.trim();
+        if path.is_empty() {
+            return;
+        }
+        let arg = if std::path::Path::new(path).is_dir() {
+            path.to_string()
+        } else {
+            format!("/select,{path}")
+        };
+        let _ = Command::new("explorer.exe").arg(arg).spawn();
+    }
+
+    pub fn open(target: &str) {
+        use windows::core::HSTRING;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let target = target.trim();
+        if target.is_empty() {
+            return;
+        }
+        unsafe {
+            windows::Win32::UI::Shell::ShellExecuteW(
+                None,
+                w!("open"),
+                &HSTRING::from(target),
+                None,
+                None,
+                SW_SHOWNORMAL,
+            );
+        }
+    }
 }
 
 #[cfg(not(windows))]
@@ -224,6 +257,21 @@ mod other {
     pub fn paste_into(_target: isize) {}
     pub fn clipboard_is_sensitive() -> bool {
         false
+    }
+    pub fn reveal(path: &str) {
+        open(if std::path::Path::new(path.trim()).is_dir() {
+            path.trim()
+        } else {
+            std::path::Path::new(path.trim()).parent().and_then(|p| p.to_str()).unwrap_or(path.trim())
+        });
+    }
+    pub fn open(target: &str) {
+        let target = target.trim();
+        if target.is_empty() {
+            return;
+        }
+        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        let _ = std::process::Command::new(opener).arg(target).spawn();
     }
 
     pub struct PasteWatch;
