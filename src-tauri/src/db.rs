@@ -125,7 +125,10 @@ impl Db {
                 bytes: r.get(4)?,
                 width: r.get(5)?,
                 height: r.get(6)?,
-                thumb: thumb.map(|b| format!("data:image/png;base64,{}", STANDARD.encode(b))),
+                thumb: thumb.map(|b| {
+                    let mime = if b.starts_with(&[0xFF, 0xD8]) { "jpeg" } else { "png" };
+                    format!("data:image/{mime};base64,{}", STANDARD.encode(b))
+                }),
                 pinned: r.get::<_, i64>(8)? != 0,
                 uses: r.get(9)?,
                 created: r.get(10)?,
@@ -142,6 +145,17 @@ impl Db {
                 Ok(Payload { kind: r.get(0)?, text: r.get(1)?, data: r.get(2)? })
             })
             .optional()
+    }
+
+    /// Stores a thumbnail drawn for a file or SVG clip, unless it has one.
+    pub fn set_thumb(&self, id: i64, thumb: &[u8], width: u32, height: u32) -> rusqlite::Result<bool> {
+        self.conn()
+            .execute(
+                "UPDATE entries SET thumb = ?2, width = ?3, height = ?4
+                 WHERE id = ?1 AND thumb IS NULL AND kind <> 'image'",
+                params![id, thumb, width, height],
+            )
+            .map(|n| n > 0)
     }
 
     pub fn mark_used(&self, id: i64, now: i64) -> rusqlite::Result<()> {
@@ -288,6 +302,18 @@ mod tests {
         assert_eq!((old[0].text.as_str(), old[0].ocr_text.as_str()), ("old", ""));
         db.add(&text("new"), 2, 10).unwrap();
         assert!(db.list().unwrap().iter().any(|c| c.text == "new"));
+    }
+
+    #[test]
+    fn drawn_thumbs_are_stored_once_with_their_type() {
+        let db = Db::in_memory().unwrap();
+        db.add(&Entry { kind: "file".into(), ..text("/a/logo.jpg") }, 1, 10).unwrap();
+        let id = db.list().unwrap()[0].id;
+        assert!(db.set_thumb(id, &[0xFF, 0xD8, 0xFF, 1], 640, 480).unwrap());
+        assert!(!db.set_thumb(id, b"\x89PNG", 1, 1).unwrap());
+        let c = &db.list().unwrap()[0];
+        assert!(c.thumb.as_deref().unwrap().starts_with("data:image/jpeg;base64,"));
+        assert_eq!((c.width, c.height), (Some(640), Some(480)));
     }
 
     #[test]

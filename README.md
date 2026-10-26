@@ -101,6 +101,19 @@ Just enough stays visible to tell what the clip is and which one:
 This only changes how the list shows them; pasting gives you the clip as it
 was copied. It also works on text recognized in screenshots.
 
+### Image files and SVG
+
+Copied image files (SVG, PNG, JPEG, GIF, WebP, BMP, ICO, AVIF, and HEIC on
+macOS) and copied SVG markup, as Figma and icon sites put it on the clipboard,
+show a thumbnail instead of a file or code icon, with their size in pixels.
+Hold `Shift` over the row for a larger preview. Transparent artwork sits on a
+checkerboard, so black icons stay visible in dark mode.
+
+The thumbnail is drawn the first time the row is shown, from the original
+file (up to 20 MB) or markup, and stored at 160 px: as JPEG when the image is
+opaque and PNG when it has transparency, usually a few KB. SVG is drawn as an
+image, so scripts in it never run. PDFs and videos keep their file icon.
+
 The pin button next to the tabs shows pinned clips only. Hover a row for its
 quick actions: open a link in your browser, show a file in Explorer or Finder, copy code
 as a fenced block, copy a colour as HEX, RGB or HSL, pin or delete.
@@ -154,9 +167,9 @@ the hotkey is invalid, the previous settings stay active.
 
 History lives next to it in `clips.db` (SQLite, not encrypted). Images are
 stored in full as PNG, with a small preview for the list; recognized text is
-stored next to them. For copied files stash keeps the paths, not the files:
-pasting puts the same files back on the clipboard, so a moved or deleted file
-won't paste. With
+stored next to them. For copied files stash keeps the paths, not the files
+(plus a small thumbnail for images): pasting puts the same files back on the
+clipboard, so a moved or deleted file won't paste. With
 `ignore_sensitive`, copies that password managers mark as "exclude from
 history" are never stored (on macOS: the nspasteboard.org concealed and
 transient types that password managers such as 1Password and KeePassXC set).

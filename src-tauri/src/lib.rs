@@ -287,6 +287,18 @@ fn delete_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<(), St
     state.db.delete(id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn visual_source(state: State<AppState>, id: i64) -> Result<tauri::ipc::Response, String> {
+    let p = state.db.payload(id).map_err(|e| e.to_string())?.ok_or("clip no longer exists")?;
+    capture::visual_source(&p.kind, &p.text).map(tauri::ipc::Response::new).ok_or_else(|| "nothing to draw".into())
+}
+
+#[tauri::command]
+fn save_thumb(state: State<AppState>, id: i64, thumb: String, width: u32, height: u32) -> Result<(), String> {
+    let bytes = capture::thumb_from_data_url(&thumb).ok_or("not a PNG or JPEG thumbnail")?;
+    state.db.set_thumb(id, &bytes, width, height).map(|_| ()).map_err(|e| e.to_string())
+}
+
 fn clip_path(state: &AppState, id: i64) -> Result<(String, String), String> {
     let p = state.db.payload(id).map_err(|e| e.to_string())?.ok_or("clip no longer exists")?;
     let first = p.text.lines().next().unwrap_or("").trim().to_string();
@@ -549,7 +561,8 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
             list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, toggle_stack,
-            paste_stack, cancel_stack, get_stack, reveal_in_explorer, open_url, copy_text, copy_fence
+            paste_stack, cancel_stack, get_stack, reveal_in_explorer, open_url, copy_text, copy_fence, visual_source,
+            save_thumb
         ])
         .on_window_event(|window, event| match event {
             WindowEvent::Focused(false) => {
