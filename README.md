@@ -76,9 +76,10 @@ turn it off.
 
 The pin button next to the tabs shows pinned clips only. Hover a row for its
 quick actions: open a link in your browser, show a file in Explorer, copy code
-as a fenced block, copy a colour as HEX, RGB or HSL, stack, pin or delete. The
-tray icon has: pause capturing, start with Windows, clear history (keeps
-pinned), quit.
+as a fenced block, copy a colour as HEX, RGB or HSL, stack, pin or delete.
+Right-click any clip for the same actions in a stash-native menu, or
+right-click anywhere else for filters, sort, theme and hide. The tray icon
+has: pause capturing, start with Windows, clear history (keeps pinned), quit.
 
 ## Config
 

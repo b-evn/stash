@@ -40,6 +40,10 @@
     stackRemove: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M21 12h-6"/>',
     external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m10 10 4 4"/><path d="M14 10v4h-4"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    chevron: '<path d="m9 18 6-6-6-6"/>',
+    chart: '<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="5" width="3" height="13" rx="1"/>',
   };
   const svg = (name) => `<svg class="icon" viewBox="0 0 24 24">${ICON[name]}</svg>`;
 
@@ -60,6 +64,8 @@
   let chips = [];
   let stack = [];
   let colorMenuFor = null;
+  let menuCtl = null;
+  let clickGuard = null;
   let running = { ids: [], total: 0 };
   let sort = store.get('sort', 'recent');
   if (!StashSearch.SORTS.includes(sort)) sort = 'recent';
@@ -140,6 +146,7 @@
       const chip = el('span', 'chip', svg(look.icon));
       chip.appendChild(el('span')).textContent = look.label;
       chip.title = tok;
+      chip.dataset.token = tok;
       const x = chip.appendChild(el('button', 'x', svg('x')));
       x.title = 'Remove';
       noFocusSteal(x);
@@ -275,11 +282,15 @@
     return '';
   }
 
-  function copyAndHide(cmd, args) {
+  function runThenHide(cmd, args) {
     Promise.resolve()
       .then(() => call(cmd, args))
       .catch((e) => console.error(e))
       .finally(() => run('hide_window'));
+  }
+
+  function copyAndHide(cmd, args) {
+    runThenHide(cmd, args);
   }
 
   function formatMenu(c) {
@@ -363,6 +374,464 @@
     return b;
   }
 
+  const MENU_GAP = 8;
+  const MENU_EDGE = 6;
+  const MENU_W = 196;
+  const SUB_W = 160;
+
+  const menuSep = () => ({ type: 'separator' });
+
+  const showItem = () => ({
+    icon: 'clipboard',
+    label: 'Show',
+    children: TABS.map(([id, label]) => ({
+      icon: id === 'all' ? 'clipboard' : id,
+      label,
+      checked: filter === id,
+      action: () => { filter = id; refresh(); },
+    })),
+  });
+
+  const pinnedItem = () => ({
+    icon: 'pin',
+    label: 'Pinned only',
+    checked: pinnedOnly,
+    action: () => { pinnedOnly = !pinnedOnly; refresh(); },
+  });
+
+  const sortItem = () => ({
+    icon: 'sort',
+    label: 'Sort',
+    children: [
+      { icon: 'clock', label: 'Recent', checked: sort === 'recent', action: () => setSortTo('recent') },
+      { icon: 'chart', label: 'Frequent', checked: sort === 'frequent', action: () => setSortTo('frequent') },
+      { icon: 'text', label: 'A–Z', checked: sort === 'a–z', action: () => setSortTo('a–z') },
+      { icon: 'number', label: 'Largest', checked: sort === 'longest', action: () => setSortTo('longest') },
+    ],
+  });
+
+  const themeItem = () => ({
+    icon: theme,
+    label: 'Theme',
+    children: THEMES.map((id) => ({
+      icon: id,
+      label: id[0].toUpperCase() + id.slice(1),
+      checked: theme === id,
+      action: () => setThemeTo(id),
+    })),
+  });
+
+  const clearSearchItem = () => ({
+    icon: 'ban',
+    label: 'Clear search',
+    hint: 'Esc',
+    action: () => { q.value = ''; chips = []; refresh(); q.focus(); },
+  });
+
+  const clearStackItem = () => ({
+    icon: 'stackRemove',
+    label: 'Clear stack',
+    action: () => { stack = []; refresh(true); },
+  });
+
+  const hideItem = () => ({
+    icon: 'x',
+    label: 'Hide stash',
+    action: () => run('hide_window'),
+  });
+
+  function appMenu({ lead = [], noClearSearch = false, noClearStack = false } = {}) {
+    const items = [...lead];
+    if (items.length) items.push(menuSep());
+    items.push(showItem(), pinnedItem(), sortItem(), themeItem());
+    const extra = [];
+    if (!noClearSearch && (q.value || chips.length)) extra.push(clearSearchItem());
+    if (!noClearStack && stack.length) extra.push(clearStackItem());
+    if (extra.length) items.push(menuSep(), ...extra);
+    items.push(menuSep(), hideItem());
+    return items;
+  }
+
+  function clipMenu(c) {
+    const noun = { image: 'image', file: 'files', link: 'link', code: 'code', color: 'colour', text: 'text' }[c.kind];
+    const items = [
+      { icon: 'clipboard', label: noun ? `Paste ${noun}` : 'Paste', hint: '↵', action: () => paste(c) },
+      { icon: 'copy', label: noun ? `Copy ${noun}` : 'Copy', hint: 'Ctrl+↵', action: () => copyOnly(c) },
+    ];
+    let special = null;
+    if (c.kind === 'link') {
+      special = { icon: 'external', label: 'Open link', action: () => runThenHide('open_url', { id: c.id }) };
+    } else if (c.kind === 'file' || c.kind === 'path') {
+      special = { icon: 'folder', label: 'Show in Explorer', action: () => runThenHide('reveal_in_explorer', { id: c.id }) };
+    } else if (c.kind === 'code') {
+      special = { icon: 'code', label: 'Copy as fenced code', action: () => copyAndHide('copy_fence', { id: c.id, lang: guessLang(c.text) }) };
+    } else if (c.kind === 'color') {
+      const formats = colorFormats(c.text);
+      if (formats.length) {
+        special = {
+          icon: 'color',
+          label: 'Copy as colour',
+          children: formats.map((f) => ({
+            dot: f.value,
+            label: f.label,
+            hint: f.value,
+            title: f.value,
+            action: () => copyAndHide('copy_text', { id: c.id, text: f.value }),
+          })),
+        };
+      }
+    }
+    if (special) items.push(menuSep(), special);
+    const inStack = stack.includes(c.id);
+    items.push(
+      menuSep(),
+      { icon: inStack ? 'stackRemove' : 'stackAdd', label: inStack ? 'Remove from stack' : 'Add to stack', hint: '⇧+↵', action: () => toggleStack(c) },
+      { icon: c.pinned ? 'pinOff' : 'pin', label: c.pinned ? 'Unpin' : 'Pin', hint: 'Ctrl+P', action: () => pin(c) },
+      menuSep(),
+      { icon: 'trash', label: 'Delete', hint: 'Del', danger: true, action: () => remove(c) },
+    );
+    return items;
+  }
+
+  function chipMenu(tok) {
+    const look = chipLook(tok);
+    const lead = [{
+      icon: 'x',
+      label: `Remove “${look.label}”`,
+      action: () => { chips = chips.filter((c) => c !== tok); refresh(); q.focus(); },
+    }];
+    if (chips.length > 1) {
+      lead.push({
+        icon: 'ban',
+        label: 'Clear filters',
+        action: () => { chips = []; refresh(); q.focus(); },
+      });
+    }
+    return appMenu({ lead, noClearSearch: true });
+  }
+
+  function searchMenu() {
+    const lead = q.value || chips.length ? [clearSearchItem()] : [];
+    return appMenu({ lead, noClearSearch: true });
+  }
+
+  function stackMenu() {
+    const lead = [];
+    if (running.ids.length) {
+      lead.push({
+        icon: 'ban',
+        label: 'Stop the stack',
+        action: () => { call('cancel_stack'); running = { ids: [], total: 0 }; renderFooter(); },
+      });
+    }
+    if (stack.length) {
+      lead.push({ icon: 'stack', label: 'Paste stack', hint: '↵', action: startStack });
+      if (stack.length > 1 && stack.every((id) => byId(id) && TEXTUAL.has(byId(id).kind))) {
+        lead.push({ icon: 'quote', label: 'Join as text', hint: 'Ctrl+⇧+↵', action: joinStack });
+      }
+      lead.push({
+        icon: 'stackRemove',
+        label: 'Clear stack',
+        action: () => { stack = []; refresh(true); },
+      });
+    }
+    return appMenu({ lead, noClearStack: true });
+  }
+
+  function setMenuActive(panel, index) {
+    if (panel.active === index) return;
+    const old = panel.rows[panel.active];
+    if (old) old.row.classList.remove('active');
+    panel.active = index;
+    const cur = panel.rows[index];
+    if (cur) cur.row.classList.add('active');
+  }
+
+  function moveMenuActive(panel, dir) {
+    const n = panel.rows.length;
+    if (!n) return;
+    let i = panel.active;
+    for (let step = 0; step < n; step++) {
+      i = i < 0 ? (dir > 0 ? 0 : n - 1) : (i + dir + n) % n;
+      if (!panel.rows[i].item.disabled) { setMenuActive(panel, i); return; }
+    }
+  }
+
+  function edgeMenuActive(panel, last) {
+    const n = panel.rows.length;
+    let i = last ? n - 1 : 0;
+    const step = last ? -1 : 1;
+    for (let k = 0; k < n; k++) {
+      if (!panel.rows[i].item.disabled) { setMenuActive(panel, i); return; }
+      i = (i + step + n) % n;
+    }
+  }
+
+  function dismissPanel(panel, animate = true) {
+    panel.root.classList.remove('on');
+    panel.root.classList.add('leaving');
+    panel.root.style.pointerEvents = 'none';
+    if (panel.parentEl) {
+      panel.parentEl.classList.remove('open');
+      panel.parentEl.setAttribute('aria-expanded', 'false');
+    }
+    if (!animate) { panel.root.remove(); return; }
+    setTimeout(() => panel.root.remove(), 130);
+  }
+
+  function closeSubmenusAfter(level) {
+    if (!menuCtl) return;
+    const drop = menuCtl.panels.filter((p) => p.level > level);
+    if (!drop.length) return;
+    menuCtl.panels = menuCtl.panels.filter((p) => p.level <= level);
+    for (const p of drop) dismissPanel(p);
+    const owner = menuCtl.panels[menuCtl.panels.length - 1];
+    if (owner) owner.openFor = null;
+  }
+
+  function openSubmenu(panel, index, focusFirst = false) {
+    const entry = panel.rows[index];
+    if (!menuCtl || !entry || !entry.item.children || panel.openFor === index) return;
+    closeSubmenusAfter(panel.level);
+    panel.openFor = index;
+    entry.row.classList.add('open');
+    entry.row.setAttribute('aria-expanded', 'true');
+    const sub = menuPanel(entry.item.children, panel.level + 1, entry.row);
+    menuCtl.panels.push(sub);
+    document.body.appendChild(sub.root);
+
+    const r = entry.row.getBoundingClientRect();
+    const w = sub.root.offsetWidth;
+    const h = sub.root.offsetHeight;
+    let left = r.right + MENU_GAP;
+    let origin = 'left';
+    if (left + w > innerWidth - MENU_EDGE) {
+      if (r.left - MENU_GAP - w >= MENU_EDGE) { left = r.left - MENU_GAP - w; origin = 'right'; }
+      else left = Math.max(MENU_EDGE, innerWidth - w - MENU_EDGE);
+    }
+    let top = r.top - 4;
+    if (top + h > innerHeight - MENU_EDGE) top = innerHeight - MENU_EDGE - h;
+    top = Math.max(MENU_EDGE, top);
+
+    sub.root.style.left = `${Math.round(left)}px`;
+    sub.root.style.top = `${Math.round(top)}px`;
+    sub.root.style.transformOrigin = `${origin} top`;
+    sub.root.style.visibility = '';
+    void sub.root.offsetWidth;
+    requestAnimationFrame(() => {
+      if (menuCtl && menuCtl.panels.includes(sub)) sub.root.classList.add('on');
+    });
+    if (focusFirst) setMenuActive(sub, 0);
+  }
+
+  function menuPanel(items, level, parentEl) {
+    const root = el('div', 'menu');
+    root.dataset.level = String(level);
+    root.setAttribute('role', 'menu');
+    root.style.left = '0px';
+    root.style.top = '0px';
+    root.style.visibility = 'hidden';
+    const panel = { root, level, parentEl, rows: [], active: -1, openFor: null };
+
+    for (const item of items) {
+      if (!item) continue;
+      if (item.type === 'separator') { root.appendChild(el('div', 'menu-sep')); continue; }
+      const row = el('div', 'menu-item' + (item.danger ? ' danger' : '') + (item.disabled ? ' disabled' : ''));
+      row.setAttribute('role', 'menuitem');
+      row.tabIndex = -1;
+      if (item.title) row.title = item.title;
+      if (item.disabled) row.setAttribute('aria-disabled', 'true');
+      if (item.checked !== undefined) row.setAttribute('aria-checked', String(Boolean(item.checked)));
+      if (item.children) {
+        row.setAttribute('aria-haspopup', 'menu');
+        row.setAttribute('aria-expanded', 'false');
+      }
+
+      const ico = row.appendChild(el('span', 'menu-ico'));
+      if (item.dot) ico.appendChild(el('i', 'menu-dot')).style.background = item.dot;
+      else if (item.icon) ico.innerHTML = svg(item.icon);
+      row.appendChild(el('span', 'menu-label')).textContent = item.label;
+      const end = row.appendChild(el('span', 'menu-end'));
+      if (item.checked) end.appendChild(el('span', 'menu-check', svg('check')));
+      else if (item.children) end.appendChild(el('span', 'menu-chev', svg('chevron')));
+      if (item.hint) end.appendChild(el('span', 'menu-hint')).textContent = item.hint;
+
+      const index = panel.rows.length;
+      panel.rows.push({ item, row });
+      row.addEventListener('pointerenter', () => {
+        setMenuActive(panel, index);
+        if (item.children) openSubmenu(panel, index);
+        else closeSubmenusAfter(panel.level);
+      });
+      row.addEventListener('mousedown', (e) => { if (e.button === 0) e.preventDefault(); });
+      row.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (item.disabled) return;
+        if (item.children) { openSubmenu(panel, index, true); return; }
+        closeMenu();
+        if (item.action) item.action();
+      });
+      row.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); });
+      root.appendChild(row);
+    }
+    return panel;
+  }
+
+  function onMenuPointerDown(e) {
+    if (!menuCtl || e.button !== 0) return;
+    if (menuCtl.panels.some((p) => p.root.contains(e.target))) return;
+    closeMenu();
+    clearClickGuard();
+    const stop = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      clearClickGuard();
+    };
+    clickGuard = stop;
+    stop.timer = setTimeout(clearClickGuard, 700);
+    document.addEventListener('click', stop, true);
+  }
+
+  function onMenuKey(e) {
+    if (!menuCtl) return;
+    const panel = menuCtl.panels[menuCtl.panels.length - 1];
+    const key = e.key;
+    if (key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (panel.level > 0) {
+        const parent = menuCtl.panels[panel.level - 1];
+        const idx = parent.openFor;
+        closeSubmenusAfter(parent.level);
+        setMenuActive(parent, idx == null ? -1 : idx);
+      } else closeMenu();
+      return;
+    }
+    if (key === 'ArrowDown' || key === 'ArrowUp' || key === 'Home' || key === 'End' || key === 'Tab') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (key === 'Home') edgeMenuActive(panel, false);
+      else if (key === 'End') edgeMenuActive(panel, true);
+      else moveMenuActive(panel, key === 'ArrowUp' || (key === 'Tab' && e.shiftKey) ? -1 : 1);
+      return;
+    }
+    if (key === 'ArrowRight') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (panel.active >= 0 && panel.rows[panel.active].item.children) openSubmenu(panel, panel.active, true);
+      return;
+    }
+    if (key === 'ArrowLeft') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (panel.level > 0) {
+        const parent = menuCtl.panels[panel.level - 1];
+        const idx = parent.openFor;
+        closeSubmenusAfter(parent.level);
+        setMenuActive(parent, idx == null ? -1 : idx);
+      }
+      return;
+    }
+    if (key === 'Enter' || key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (panel.active < 0) return;
+      const entry = panel.rows[panel.active];
+      if (entry.item.disabled) return;
+      if (entry.item.children) { openSubmenu(panel, panel.active, true); return; }
+      closeMenu();
+      if (entry.item.action) entry.item.action();
+      return;
+    }
+    if ((key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) || key === 'Backspace') {
+      closeMenu(false);
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onMenuBlur() { closeMenu(true, false); }
+  function onMenuResize() { closeMenu(false, false); }
+  function onMenuScroll(e) {
+    if (!menuCtl) return;
+    if (!menuCtl.panels.some((p) => p.root.contains(e.target))) closeMenu(false);
+  }
+
+  function closeMenu(animate = true, focus = true) {
+    if (!menuCtl) return;
+    const ctl = menuCtl;
+    menuCtl = null;
+    document.removeEventListener('pointerdown', onMenuPointerDown, true);
+    document.removeEventListener('keydown', onMenuKey, true);
+    window.removeEventListener('blur', onMenuBlur);
+    window.removeEventListener('resize', onMenuResize);
+    document.removeEventListener('scroll', onMenuScroll, true);
+    for (const p of ctl.panels) dismissPanel(p, animate);
+    if (focus) q.focus();
+  }
+
+  function clearClickGuard() {
+    if (!clickGuard) return;
+    document.removeEventListener('click', clickGuard, true);
+    clearTimeout(clickGuard.timer);
+    clickGuard = null;
+  }
+
+  function openMenu(items, x, y, label) {
+    clearClickGuard();
+    if (menuCtl) closeMenu(false, false);
+    const panel = menuPanel(items, 0, null);
+    const ctl = { panels: [panel] };
+    menuCtl = ctl;
+    panel.root.setAttribute('aria-label', label || 'Actions');
+    panel.root.style.maxHeight = 'none';
+    document.body.appendChild(panel.root);
+
+    const w = panel.root.offsetWidth;
+    const h = panel.root.offsetHeight;
+    let left = Math.min(Math.max(x, MENU_EDGE), Math.max(MENU_EDGE, innerWidth - w - MENU_EDGE));
+    const hasSub = items.some((it) => it && it.children);
+    if (hasSub && innerWidth >= w + SUB_W + MENU_GAP + 2 * MENU_EDGE) {
+      const subW = Math.min(SUB_W, innerWidth - 2 * MENU_EDGE);
+      const rightFit = Math.min(left, innerWidth - MENU_EDGE - subW - MENU_GAP - w);
+      const leftFit = Math.max(left, MENU_EDGE + subW + MENU_GAP);
+      const rightOk = rightFit >= MENU_EDGE;
+      const leftOk = leftFit <= innerWidth - w - MENU_EDGE;
+      if (rightOk && leftOk) left = left - rightFit <= leftFit - left ? rightFit : leftFit;
+      else if (rightOk) left = rightFit;
+      else if (leftOk) left = leftFit;
+    }
+
+    const below = innerHeight - MENU_EDGE - y;
+    const above = y - MENU_EDGE;
+    let top;
+    let maxH;
+    let oy;
+    if (h <= below) { top = y; maxH = below; oy = 'top'; }
+    else if (h <= above) { top = y - h; maxH = above; oy = 'bottom'; }
+    else if (below >= above) { top = y; maxH = below; oy = 'top'; }
+    else { maxH = above; top = y - maxH; oy = 'bottom'; }
+    panel.root.style.maxHeight = `${Math.max(1, maxH)}px`;
+    const ox = left + w < x ? 'right' : 'left';
+    panel.root.style.left = `${Math.round(left)}px`;
+    panel.root.style.top = `${Math.round(top)}px`;
+    panel.root.style.transformOrigin = `${ox} ${oy}`;
+    panel.root.style.visibility = '';
+    void panel.root.offsetWidth;
+    requestAnimationFrame(() => {
+      if (menuCtl === ctl) panel.root.classList.add('on');
+    });
+
+    document.addEventListener('pointerdown', onMenuPointerDown, true);
+    document.addEventListener('keydown', onMenuKey, true);
+    window.addEventListener('blur', onMenuBlur);
+    window.addEventListener('resize', onMenuResize);
+    document.addEventListener('scroll', onMenuScroll, true);
+    q.focus();
+  }
+
   function renderItem(r, i) {
     const c = r.clip;
     const row = el('div', 'item' + (i === sel ? ' sel' : '') + (c.kind === 'code' ? ' mono' : ''));
@@ -410,7 +879,12 @@
     }
 
     row.append(tile(c), main, trail);
-    row.addEventListener('mousemove', (e) => { setShift(e.shiftKey); const n = Number(row.dataset.i); if (sel !== n) select(n, false); });
+    row.addEventListener('mousemove', (e) => {
+      if (menuCtl) return;
+      setShift(e.shiftKey);
+      const n = Number(row.dataset.i);
+      if (sel !== n) select(n, false);
+    });
     row.addEventListener('click', () => (stack.length ? toggleStack(c) : paste(c)));
     return row;
   }
@@ -615,8 +1089,10 @@
   }
 
   const cycle = (list, cur, dir = 1) => list[(list.indexOf(cur) + dir + list.length) % list.length];
-  const setSort = () => { sort = cycle(StashSearch.SORTS, sort); store.set('sort', sort); refresh(); };
-  const setTheme = () => { theme = cycle(THEMES, theme); store.set('theme', theme); applyTheme(); };
+  const setSortTo = (v) => { sort = v; store.set('sort', sort); refresh(); };
+  const setThemeTo = (v) => { theme = v; store.set('theme', theme); applyTheme(); };
+  const setSort = () => setSortTo(cycle(StashSearch.SORTS, sort));
+  const setTheme = () => setThemeTo(cycle(THEMES, theme));
 
   function move(delta) {
     const n = Math.min(results.length, MAX_ROWS);
@@ -652,6 +1128,43 @@
   });
 
   q.addEventListener('input', () => { absorb(); refresh(); });
+
+  document.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (menuCtl && menuCtl.panels.some((p) => p.root.contains(e.target))) return;
+    const target = e.target instanceof Element ? e.target : e.target && e.target.parentElement;
+    if (!target) return;
+
+    const row = target.closest('.item');
+    if (row && row.dataset.i !== undefined) {
+      const i = Number(row.dataset.i);
+      const r = results[i];
+      if (r) {
+        select(i, false);
+        openMenu(clipMenu(r.clip), e.clientX, e.clientY, 'Clip actions');
+        return;
+      }
+    }
+
+    const chip = target.closest('.chip');
+    if (chip && chip.dataset.token) {
+      openMenu(chipMenu(chip.dataset.token), e.clientX, e.clientY, 'Filter actions');
+      return;
+    }
+
+    if (target.closest('#stackbar')) {
+      openMenu(stackMenu(), e.clientX, e.clientY, 'Stack actions');
+      return;
+    }
+
+    if (target.closest('.search')) {
+      openMenu(searchMenu(), e.clientX, e.clientY, 'Search actions');
+      return;
+    }
+
+    openMenu(appMenu(), e.clientX, e.clientY, 'stash actions');
+  });
+
   [pinBtn, sortBtn, themeBtn].forEach(noFocusSteal);
   pinBtn.innerHTML = svg('pin');
   pinBtn.addEventListener('click', () => { pinnedOnly = !pinnedOnly; refresh(); });
@@ -659,6 +1172,8 @@
   themeBtn.addEventListener('click', setTheme);
 
   async function open() {
+    clearClickGuard();
+    closeMenu(false, false);
     q.value = params.get('q') || '';
     chips = [];
     absorb(true);
