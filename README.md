@@ -49,6 +49,7 @@ this needs Accessibility access (see below).
 | `Enter` | paste (with a stack: paste its next clip) |
 | `Ctrl+1`…`9` | paste the numbered row |
 | `Ctrl+Enter` | copy only, don't paste |
+| hold `Shift` | preview the selected clip: an image larger, long text and code in full |
 | `Ctrl`+click | add to / remove from the paste stack |
 | `Ctrl+P` | pin / unpin (pinned clips are never pruned) |
 | `Ctrl+D` · `Del` (empty search) | delete (macOS also `⌘⌫`) |
@@ -122,6 +123,10 @@ file (up to 20 MB) or markup, and stored at 160 px: as JPEG when the image is
 opaque and PNG when it has transparency, usually a few KB (fonts are only
 loaded to draw their sample, then unloaded). SVG is drawn as an
 image, so scripts in it never run. PDFs and videos keep their file icon.
+
+Long text, code and links that the row cuts short show their first 10
+lines while you hold `Shift`, with line breaks and indentation as copied, and
+how much more there is. Secrets stay blurred there too.
 
 Code clips show the language stash guesses in their icon (`JS`, `PY`, `RS`,
 `SQL`, `JSON`…), the same guess it uses for copying as a fenced block.
