@@ -8,28 +8,46 @@
 </head>
 <body>
   <main class="card" id="card">
-    <label class="search">
-      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      <span class="chips" id="chips"></span>
-      <input id="q" type="text" spellcheck="false" autocomplete="off" placeholder="Search your clipboard…">
-      <kbd id="esc">Esc</kbd>
-    </label>
-    <div class="bar">
-      <div class="tabs" id="tabs" role="tablist"><span class="pill" id="pill"></span></div>
-      <button class="ghost" id="pinned" title="Pinned only" aria-pressed="false"></button>
-    </div>
-    <section class="list" id="list" role="listbox"></section>
-    <footer id="footer">
-      <div class="foot" id="hints">
-        <span class="hint"><kbd>↵</kbd>Paste</span>
-        <span class="hint"><kbd>Ctrl</kbd><kbd>Click</kbd>Stack</span>
-        <span class="hint"><kbd>Ctrl</kbd><kbd>P</kbd>Pin</span>
-        <span class="spacer"></span>
-        <button class="ghost text" id="sort" title="Sort (Ctrl+S)"></button>
-        <button class="ghost" id="theme" title="Theme (Ctrl+T)"></button>
+    <div class="view" id="home">
+      <label class="search">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="chips" id="chips"></span>
+        <input id="q" type="text" spellcheck="false" autocomplete="off" placeholder="Search your clipboard…">
+        <kbd id="esc">Esc</kbd>
+      </label>
+      <div class="bar">
+        <div class="tabs" id="tabs" role="tablist"><span class="pill" id="pill"></span></div>
+        <button class="ghost" id="pinned" title="Pinned only" aria-pressed="false"></button>
       </div>
-      <div class="foot" id="stackbar" hidden></div>
-    </footer>
+      <section class="list" id="list" role="listbox"></section>
+      <footer id="footer">
+        <div class="foot" id="hints">
+          <span class="hint"><kbd>↵</kbd>Paste</span>
+          <span class="hint"><kbd>Ctrl</kbd><kbd>Click</kbd>Stack</span>
+          <span class="spacer"></span>
+          <button class="ghost text" id="sort" title="Sort (Ctrl+S)"></button>
+          <button class="ghost" id="theme" title="Theme (Ctrl+T)"></button>
+          <button class="ghost" id="settings" title="Settings (Ctrl+,)"></button>
+        </div>
+        <div class="foot" id="stackbar" hidden></div>
+      </footer>
+    </div>
+    <div class="view" id="prefs" hidden aria-label="Settings">
+      <header class="prefs-head">
+        <button class="ghost" id="back" title="Back (Esc)"></button>
+        <span class="prefs-title">Settings</span>
+        <span class="prefs-ver" id="version"></span>
+      </header>
+      <section class="prefs-body" id="prefs-body" tabindex="-1"></section>
+      <footer>
+        <div class="foot">
+          <span class="hint"><kbd>↑</kbd><kbd>↓</kbd>Move</span>
+          <span class="hint"><kbd>Space</kbd>Toggle</span>
+          <span class="spacer"></span>
+          <button class="ghost text" id="config-file" title="Show config.json"></button>
+        </div>
+      </footer>
+    </div>
   </main>
   <script src="search.js"></script>
   <script src="secrets.js"></script>

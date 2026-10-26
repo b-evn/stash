@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    fs,
+    fs, io,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -46,12 +46,15 @@ pub fn load(dir: &Path) -> Config {
         }),
         Err(_) => {
             let cfg = Config::default();
-            if let Ok(s) = serde_json::to_string_pretty(&cfg) {
-                let _ = fs::write(&path, s);
-            }
+            let _ = save(dir, &cfg);
             cfg
         }
     }
+}
+
+pub fn save(dir: &Path, cfg: &Config) -> io::Result<()> {
+    let text = serde_json::to_string_pretty(cfg).map_err(io::Error::other)?;
+    fs::write(dir.join(FILE_NAME), text)
 }
 
 type Stamp = Option<(SystemTime, u64)>;
@@ -129,5 +132,13 @@ mod tests {
 
         fs::remove_file(&file).unwrap();
         assert_eq!(watch.poll(), None);
+    }
+
+    #[test]
+    fn save_round_trips() {
+        let dir = scratch("save");
+        let cfg = Config { max_items: 500, capture_files: false, ..Config::default() };
+        save(&dir, &cfg).unwrap();
+        assert_eq!(load(&dir), cfg);
     }
 }
