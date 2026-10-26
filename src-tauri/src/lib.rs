@@ -309,6 +309,40 @@ fn open_url(state: State<AppState>, id: i64) -> Result<(), String> {
     Ok(())
 }
 
+fn fence(text: &str, lang: &str) -> String {
+    let body = text.trim_end_matches(['\r', '\n']);
+    let mut longest = 0;
+    let mut run = 0;
+    for ch in body.chars() {
+        if ch == '`' {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    let ticks = "`".repeat((longest + 1).max(3));
+    format!("{ticks}{lang}\n{body}\n{ticks}")
+}
+
+#[tauri::command]
+fn copy_fence(state: State<AppState>, id: i64, lang: String) -> Result<(), String> {
+    let p = state.db.payload(id).map_err(|e| e.to_string())?.ok_or("clip no longer exists")?;
+    if p.kind != "code" {
+        return Err("this clip is not code".into());
+    }
+    let lang: String = lang
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '#' | '-' | '_'))
+        .take(16)
+        .collect();
+    let body = fence(&p.text, &lang);
+    state.quiet_until.store(now_ms() + ECHO_MS, Ordering::Relaxed);
+    arboard::Clipboard::new().and_then(|mut c| c.set_text(body)).map_err(|e| e.to_string())?;
+    state.db.mark_used(id, now_ms()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn hide_window(app: AppHandle) {
     hide_popup(&app);
@@ -466,7 +500,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
             list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, start_stack,
-            cancel_stack, get_stack, paste_joined, reveal_in_explorer, open_url
+            cancel_stack, get_stack, paste_joined, reveal_in_explorer, open_url, copy_fence
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::Focused(false) = event {
@@ -536,4 +570,16 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running stash");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fence;
+
+    #[test]
+    fn fences_code_and_outgrows_backticks() {
+        assert_eq!(fence("let x = 1;\n", "rust"), "```rust\nlet x = 1;\n```");
+        assert_eq!(fence("a ``` b", ""), "````\na ``` b\n````");
+        assert_eq!(fence("plain", ""), "```\nplain\n```");
+    }
 }
