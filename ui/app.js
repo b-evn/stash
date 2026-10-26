@@ -174,6 +174,31 @@
     return { title: ls[0] || c.text, sub: ls[1] ? ls[1] + (ls.length > 2 ? '  …' : '') : null };
   }
 
+  function guessLang(text) {
+    const t = text.trim();
+    if (/^[[{]/.test(t)) {
+      try { JSON.parse(t); return 'json'; } catch {}
+    }
+    if (/^<\?php/i.test(t)) return 'php';
+    if (/^<(!doctype|html|div|section|template)/i.test(t)) return 'html';
+    if (/\b(fn\s+\w+|let\s+mut|impl\s+\w+|use\s+std::|pub\s+(struct|enum))\b/.test(t)) return 'rust';
+    if (/^\s*(def\s+\w+\s*\(|class\s+\w+.*:|from\s+\w+\s+import\s+|import\s+\w+\s*$)/m.test(t)) return 'python';
+    if (/\bfunc\s+\w+\s*\(|^package\s+\w+/m.test(t)) return 'go';
+    if (/\b(public|private)\s+(class|static|void)\b|System\.out\./.test(t)) return 'java';
+    if (/#include\s*</.test(t)) return 'cpp';
+    if (/\b(SELECT|INSERT|UPDATE|DELETE)\b[\s\S]*\b(FROM|INTO|SET|WHERE)\b/i.test(t)) return 'sql';
+    if (/\b(const|let|var)\s+\w+\s*=|=>|function\s*\w*\s*\(/.test(t)) return 'js';
+    if (/^\s*(#!\/bin\/(ba)?sh|sudo\s)/m.test(t)) return 'bash';
+    return '';
+  }
+
+  function copyAndHide(cmd, args) {
+    Promise.resolve()
+      .then(() => call(cmd, args))
+      .catch((e) => console.error(e))
+      .finally(() => run('hide_window'));
+  }
+
   function paint(node, text) {
     const s = text.slice(0, 300);
     const hits = query() ? StashSearch.hits(query(), s) : new Set();
@@ -259,6 +284,8 @@
       acts.prepend(action('external', 'Open link', () => run('open_url', { id: c.id })));
     } else if (c.kind === 'file' || c.kind === 'path') {
       acts.prepend(action('folder', 'Show in Explorer', () => run('reveal_in_explorer', { id: c.id })));
+    } else if (c.kind === 'code') {
+      acts.prepend(action('code', 'Copy as fenced code block', () => copyAndHide('copy_fence', { id: c.id, lang: guessLang(c.text) })));
     }
 
     row.append(tile(c), main, trail);
