@@ -101,20 +101,45 @@ pub fn is_svg(text: &str) -> bool {
     t.strip_prefix("<svg").is_some_and(|rest| rest.starts_with(|c: char| c.is_whitespace() || c == '>'))
 }
 
+/// A lone image or font path copied as text, as Finder's "Copy as Pathname"
+/// or Explorer's "Copy as path" (quoted) put it, with `~` expanded.
+pub fn text_path(text: &str) -> Option<String> {
+    let t = text.trim();
+    let t = t.strip_prefix('"').and_then(|t| t.strip_suffix('"')).unwrap_or(t);
+    let b = t.as_bytes();
+    let drive = b.len() > 2 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+    let absolute = drive || t.starts_with("\\\\") || t.starts_with('/') || t.starts_with("~/");
+    if !absolute || t.contains('\n') || !is_visual_path(t) {
+        return None;
+    }
+    match t.strip_prefix("~/") {
+        Some(rest) => {
+            let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+            Some(std::path::Path::new(&home).join(rest).to_string_lossy().into_owned())
+        }
+        None => Some(t.to_string()),
+    }
+}
+
+fn read_visual(path: &str) -> Option<Vec<u8>> {
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_VISUAL_BYTES {
+        return None;
+    }
+    std::fs::read(path).ok()
+}
+
 /// The bytes a clip's thumbnail is drawn from: the first image among copied
-/// files, or copied SVG markup. Image clips have their thumbnail already.
+/// files, an image path copied as text, or copied SVG markup. Image clips
+/// have their thumbnail already.
 pub fn visual_source(kind: &str, text: &str) -> Option<Vec<u8>> {
     match kind {
         "image" => None,
-        "file" => {
-            let path = text.lines().map(str::trim).find(|p| is_visual_path(p))?;
-            let meta = std::fs::metadata(path).ok()?;
-            if !meta.is_file() || meta.len() > MAX_VISUAL_BYTES {
-                return None;
-            }
-            std::fs::read(path).ok()
-        }
-        _ => is_svg(text).then(|| text.trim().as_bytes().to_vec()),
+        "file" => read_visual(text.lines().map(str::trim).find(|p| is_visual_path(p))?),
+        _ => match text_path(text) {
+            Some(path) => read_visual(&path),
+            None => is_svg(text).then(|| text.trim().as_bytes().to_vec()),
+        },
     }
 }
 
@@ -258,8 +283,22 @@ mod tests {
         assert_eq!(visual_source("file", &txt.display().to_string()), None);
         assert!(is_visual_path("/fonts/Inter.WOFF2") && is_visual_path("C:\\Fonts\\a.otf"));
         assert!(!is_visual_path("/fonts/fonts.ttc"));
+        // The same image, copied as a path instead of as a file.
+        assert_eq!(visual_source("path", &png.display().to_string()), Some(b"png bytes".to_vec()));
+        assert_eq!(visual_source("text", &format!("\"{}\"\n", png.display())), Some(b"png bytes".to_vec()));
         assert_eq!(visual_source("file", &dir.join("gone.png").display().to_string()), None);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn image_paths_copied_as_text() {
+        assert_eq!(text_path("/Users/me/Desktop/Screenshot 2026-10-26 at 14.03.png").as_deref(), Some("/Users/me/Desktop/Screenshot 2026-10-26 at 14.03.png"));
+        assert_eq!(text_path("\"C:\\Users\\me\\logo.SVG\"").as_deref(), Some("C:\\Users\\me\\logo.SVG"));
+        assert_eq!(text_path("\\\\server\\share\\a.png").as_deref(), Some("\\\\server\\share\\a.png"));
+        assert!(text_path("~/a.png").is_some_and(|p| !p.starts_with('~') && p.ends_with("a.png")));
+        assert_eq!(text_path("logo.png"), None);
+        assert_eq!(text_path("/Users/me/notes.txt"), None);
+        assert_eq!(text_path("/a.png\n/b.png"), None);
     }
 
     #[test]
