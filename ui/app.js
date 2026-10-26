@@ -185,6 +185,7 @@
   const baseName = (p) => p.split(/[\\/]/).filter(Boolean).pop() || p;
   const dirName = (p) => { const i = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')); return i > 0 ? p.slice(0, i) : ''; };
 
+  const homeDir = (p) => dirName(p).replace(/^(?:[A-Z]:\\Users\\[^\\]+|\/Users\/[^/]+)/i, '~');
   const dimsOf = (c) => (c.width && c.height ? `${c.width} × ${c.height}` : null);
 
   function describe(c) {
@@ -200,9 +201,10 @@
       const first = paths[0] || c.text;
       const name = baseName(first);
       if (paths.length > 1) return { title: `${name} +${paths.length - 1}`, sub: `${paths.length} files · ${size(c.bytes)}` };
-      const dir = dirName(first).replace(/^(?:[A-Z]:\\Users\\[^\\]+|\/Users\/[^/]+)/i, '~');
-      return { title: name, sub: [dir, size(c.bytes), dimsOf(c)].filter(Boolean).join(' · ') };
+      return { title: name, sub: [homeDir(first), size(c.bytes), dimsOf(c)].filter(Boolean).join(' · ') };
     }
+    const path = textPath(c);
+    if (path) return { title: baseName(path), sub: [homeDir(path), dimsOf(c)].filter(Boolean).join(' · ') };
     const ls = lines(c.text);
     if (c.kind === 'link') return { title: (ls[0] || '').replace(/^[a-z]+:\/\//i, '').replace(/\/$/, '') };
     return { title: ls[0] || c.text, sub: ls[1] ? ls[1] + (ls.length > 2 ? '  …' : '') : null };
@@ -364,14 +366,20 @@
   const tried = new Set();
   let drawing = Promise.resolve();
 
-  const visualPath = (c) => (c.kind === 'file' ? lines(c.text).find((p) => VISUAL_EXT.test(p)) : undefined);
+  // A lone image or font path copied as text, quoted (as Explorer copies it) or not.
+  const PATH_START = /^(?:[A-Za-z]:[\\/]|\\\\|\/|~\/)/;
+  function textPath(c) {
+    if (c.kind === 'file' || c.kind === 'image') return undefined;
+    const t = c.text.trim().replace(/^"(.*)"$/, '$1');
+    return !t.includes('\n') && PATH_START.test(t) && VISUAL_EXT.test(t) ? t : undefined;
+  }
+  const visualPath = (c) => (c.kind === 'file' ? lines(c.text).find((p) => VISUAL_EXT.test(p)) : textPath(c));
   const isFontFile = (c) => FONT_EXT.test(visualPath(c) || '');
 
   function visualType(c) {
     if (c.thumb || c.kind === 'image') return null;
-    if (c.kind === 'file') {
-      const path = visualPath(c);
-      if (!path) return null;
+    const path = visualPath(c);
+    if (path) {
       const ext = path.match(VISUAL_EXT)[1].toLowerCase();
       return MIME[ext] || `image/${ext}`;
     }
@@ -1796,8 +1804,8 @@
       const src = demoVisuals()[args.id];
       if (!src) return Promise.reject(new Error('nothing to draw'));
       const svg = new TextEncoder().encode(src).buffer;
-      if (args.id !== 7) return Promise.resolve(svg);
-      // The trip photos are JPEGs, so render the scene into one.
+      if (args.id !== 7 && args.id !== 19) return Promise.resolve(svg);
+      // The trip photos and the screenshot are raster images, so render the scene into one.
       const img = new Image();
       img.src = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
       return new Promise((loaded) => { img.onload = loaded; }).then(() => {
@@ -1829,12 +1837,12 @@
     return Promise.resolve();
   }
 
-  // Sources the demo hands out for its trip photos (7), logo file (12) and copied icon (17).
+  // Sources the demo hands out for its trip photos (7), logo file (12), copied icon (17) and screenshot path (19).
   function demoVisuals() {
     const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="6" y="6" width="52" height="52" rx="14" fill="#6366f1"/><path d="M22 40 L32 18 L42 40 Z" fill="#fff"/></svg>';
     const icon = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>';
     const trip = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 210"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c4a6e"/><stop offset="1" stop-color="#7dd3fc"/></linearGradient></defs><rect width="320" height="210" fill="url(#s)"/><path d="M0 140 L80 70 L140 120 L210 50 L320 130 L320 210 L0 210Z" fill="#f8fafc"/><path d="M0 170 L120 130 L200 165 L320 140 L320 210 L0 210Z" fill="#14532d"/></svg>';
-    return { 7: trip, 12: logo, 17: icon };
+    return { 7: trip, 12: logo, 17: icon, 19: trip };
   }
 
   function demoClips() {
@@ -1861,6 +1869,7 @@
       c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
       c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
       c(17, 'code', demoVisuals()[17], 600),
+      c(19, 'text', '/Users/alex/Desktop/Screenshot 2026-10-26 at 14.03.12.png', 300),
       c(18, 'file', 'C:\\Users\\alex\\Downloads\\Geist-Regular.woff2', 900, { bytes: 68200 }),
       // Made up. Split in two so secret scanners don't take it for a real key.
       c(16, 'code', 'STRIPE_SECRET_KEY=sk_' + 'live_51NzQ8vKd2Lr7XbW4eTfYp9Hm\nDATABASE_URL=postgres://app:Tr0ub4dor@db.internal:5432/main', 14000),

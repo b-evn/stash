@@ -110,6 +110,8 @@ show a thumbnail instead of a file or code icon, with their size in pixels.
 Hold `Shift` over the row for a larger preview. Transparent artwork sits on a
 checkerboard, so black icons stay visible in dark mode. Font files (TTF, OTF,
 WOFF, WOFF2) show "Aa" set in that font, in the theme's text colour.
+The same goes for a path to one of these files copied as text, such as from
+Finder's Copy as Pathname, Explorer's Copy as path or a terminal.
 
 The thumbnail is drawn the first time the row is shown, from the original
 file (up to 20 MB) or markup, and stored at 160 px: as JPEG when the image is
