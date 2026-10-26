@@ -90,6 +90,17 @@ Ctrl-click works too). The tray icon (menu bar icon on macOS) has: pause
 capturing, start with Windows / open at login, clear history (keeps pinned),
 quit.
 
+### macOS screenshots
+
+Screenshots you take with macOS's own tool (`⌘⇧3`, `⌘⇧4`, `⌘⇧5`) are still
+saved as files as usual, and stash also puts each one on the clipboard. So it
+lands in your history (with its text recognized) and `⌘V` pastes it right
+away. stash follows the save location you pick in the Screenshot app and
+recognizes screenshots by the tag macOS gives them, so renamed or localized
+files work too. With the floating thumbnail on, macOS saves the file a few
+seconds later; turn it off under `⌘⇧5` → Options for instant capture. Set
+`capture_screenshots` to `false` in the config to turn this off.
+
 ### macOS permissions
 
 stash lives in the menu bar, with no Dock icon. To paste for you, find the text
@@ -113,7 +124,8 @@ clip you pick, and you press `⌘V` yourself.
   "capture_images": true,
   "capture_files": true,
   "ocr_images": true,
-  "max_image_megapixels": 40
+  "max_image_megapixels": 40,
+  "capture_screenshots": true
 }
 ```
 

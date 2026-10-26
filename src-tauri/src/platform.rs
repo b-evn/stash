@@ -88,6 +88,10 @@ mod win {
     pub fn request_access() {}
     pub fn prepare_popup(_w: &tauri::WebviewWindow) {}
     pub fn release_focus(_w: &tauri::WebviewWindow) {}
+    pub fn watch_screenshots(_on_new: impl Fn(&std::path::Path) + Send + 'static) {}
+    pub fn copy_image_file(_path: &std::path::Path) -> bool {
+        false
+    }
 
     pub fn focus_popup(w: &tauri::WebviewWindow) {
         if let Ok(h) = w.hwnd() {
@@ -258,18 +262,18 @@ mod win {
 #[cfg(target_os = "macos")]
 mod mac {
     use super::Rect;
-    use objc2::{rc::autoreleasepool, MainThreadMarker};
+    use objc2::{rc::autoreleasepool, runtime::ProtocolObject, AnyThread, MainThreadMarker};
     use objc2_app_kit::{
-        NSApplication, NSApplicationActivationOptions, NSPasteboard, NSPopUpMenuWindowLevel, NSRunningApplication,
-        NSScreen, NSWindow, NSWindowCollectionBehavior, NSWorkspace,
+        NSApplication, NSApplicationActivationOptions, NSImage, NSPasteboard, NSPopUpMenuWindowLevel,
+        NSRunningApplication, NSScreen, NSWindow, NSWindowCollectionBehavior, NSWorkspace,
     };
     use objc2_application_services::{
         kAXTrustedCheckOptionPrompt, AXError, AXIsProcessTrusted, AXIsProcessTrustedWithOptions, AXUIElement, AXValue,
         AXValueType,
     };
     use objc2_core_foundation::{
-        kCFBooleanTrue, kCFRunLoopDefaultMode, CFDictionary, CFMachPort, CFRange, CFRetained, CFRunLoop, CFString,
-        CFType, CGRect,
+        kCFBooleanTrue, kCFRunLoopDefaultMode, CFDictionary, CFMachPort, CFPreferencesAppSynchronize,
+        CFPreferencesCopyAppValue, CFRange, CFRetained, CFRunLoop, CFString, CFType, CGRect,
     };
     use objc2_core_graphics::{
         CGEvent, CGEventField, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventTapLocation,
@@ -278,8 +282,12 @@ mod mac {
     use objc2_foundation::{NSArray, NSString, NSURL};
     use std::{
         cell::Cell,
-        ffi::c_void,
+        collections::HashSet,
+        ffi::{c_void, CString, OsString},
+        os::unix::ffi::OsStrExt,
+        path::{Path, PathBuf},
         ptr::{self, NonNull},
+        time::SystemTime,
         sync::{
             atomic::{AtomicBool, Ordering},
             mpsc::Sender,
@@ -581,6 +589,87 @@ mod mac {
         }
     }
 
+    // Where the screenshot tool saves: its "location" setting, else the Desktop.
+    fn screenshot_dir() -> Option<PathBuf> {
+        let domain = CFString::from_static_str("com.apple.screencapture");
+        CFPreferencesAppSynchronize(&domain);
+        let custom = CFPreferencesCopyAppValue(&CFString::from_static_str("location"), &domain)
+            .and_then(|v| v.downcast::<CFString>().ok())
+            .map(|s| expand_home(&s.to_string()));
+        Some(PathBuf::from(custom.unwrap_or(format!("{}/Desktop", std::env::var("HOME").ok()?))))
+    }
+
+    // The screenshot tool tags its files, whatever the language of their names.
+    fn is_screenshot(path: &Path) -> bool {
+        let Ok(c) = CString::new(path.as_os_str().as_bytes()) else { return false };
+        let tag = c"com.apple.metadata:kMDItemIsScreenCapture";
+        unsafe { libc::getxattr(c.as_ptr(), tag.as_ptr(), ptr::null_mut(), 0, 0, 0) >= 0 }
+    }
+
+    fn is_image(path: &Path) -> bool {
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "heic" | "tif" | "tiff")
+    }
+
+    fn file_names(dir: &Path) -> HashSet<OsString> {
+        std::fs::read_dir(dir).map(|it| it.flatten().map(|e| e.file_name()).collect()).unwrap_or_default()
+    }
+
+    fn modified(dir: &Path) -> Option<SystemTime> {
+        std::fs::metadata(dir).and_then(|m| m.modified()).ok()
+    }
+
+    // Checks the screenshot folder's timestamp once a second and reports each new screenshot.
+    pub fn watch_screenshots(on_new: impl Fn(&Path) + Send + 'static) {
+        std::thread::spawn(move || {
+            let (mut dir, mut stamp, mut seen) = (PathBuf::new(), None, HashSet::new());
+            let mut tick = 0u64;
+            loop {
+                tick += 1;
+                if tick % 10 == 1 {
+                    if let Some(d) = screenshot_dir().filter(|d| *d != dir) {
+                        (stamp, seen) = (modified(&d), file_names(&d));
+                        dir = d;
+                    }
+                }
+                sleep(Duration::from_secs(1));
+                let now = modified(&dir);
+                if now == stamp {
+                    continue;
+                }
+                stamp = now;
+                let names = file_names(&dir);
+                for name in names.difference(&seen) {
+                    let path = dir.join(name);
+                    if name.as_bytes().starts_with(b".") || !is_image(&path) {
+                        continue;
+                    }
+                    // The tag can land just after the file does.
+                    for _ in 0..10 {
+                        if is_screenshot(&path) {
+                            on_new(&path);
+                            break;
+                        }
+                        sleep(Duration::from_millis(200));
+                    }
+                }
+                seen = names;
+            }
+        });
+    }
+
+    pub fn copy_image_file(path: &Path) -> bool {
+        let Some(path) = path.to_str() else { return false };
+        autoreleasepool(|_| {
+            let Some(image) = NSImage::initWithContentsOfFile(NSImage::alloc(), &NSString::from_str(path)) else {
+                return false;
+            };
+            let pb = NSPasteboard::generalPasteboard();
+            pb.clearContents();
+            pb.writeObjects(&NSArray::from_slice(&[ProtocolObject::from_ref(&*image)]))
+        })
+    }
+
     pub fn reveal(path: &str) {
         let path = expand_home(path.trim());
         if path.is_empty() {
@@ -627,6 +716,10 @@ mod other {
     pub fn prepare_popup(_w: &tauri::WebviewWindow) {}
     pub fn focus_popup(_w: &tauri::WebviewWindow) {}
     pub fn release_focus(_w: &tauri::WebviewWindow) {}
+    pub fn watch_screenshots(_on_new: impl Fn(&std::path::Path) + Send + 'static) {}
+    pub fn copy_image_file(_path: &std::path::Path) -> bool {
+        false
+    }
     pub fn paste_into(_target: isize) {}
     pub fn clipboard_is_sensitive() -> bool {
         false

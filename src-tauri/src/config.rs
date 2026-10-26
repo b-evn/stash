@@ -18,6 +18,7 @@ pub struct Config {
     pub capture_files: bool,
     pub ocr_images: bool,
     pub max_image_megapixels: u32,
+    pub capture_screenshots: bool,
 }
 
 impl Default for Config {
@@ -31,6 +32,7 @@ impl Default for Config {
             capture_files: true,
             ocr_images: true,
             max_image_megapixels: 40,
+            capture_screenshots: true,
         }
     }
 }
