@@ -307,9 +307,11 @@ mod mac {
     }
 
     // Pasting, the caret position and the paste stack need Accessibility access.
-    // Shows the system prompt the first time, then does nothing.
+    // AXIsProcessTrustedWithOptions shows the system prompt on every call while
+    // stash isn't trusted, so ask at most once per run and check silently after.
     pub fn request_access() {
-        if trusted() {
+        static ASKED: AtomicBool = AtomicBool::new(false);
+        if trusted() || ASKED.swap(true, Ordering::Relaxed) {
             return;
         }
         let Some(yes) = (unsafe { kCFBooleanTrue }) else { return };
@@ -526,6 +528,12 @@ mod mac {
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = stop.clone();
         std::thread::spawn(move || {
+            // Without Accessibility, creating a keyboard tap makes macOS ask for Input Monitoring.
+            if !trusted() {
+                eprintln!("stash: can't watch for pastes, allow stash under Privacy & Security > Accessibility");
+                request_access();
+                return;
+            }
             let tap = Tap { tx, armed: Cell::new(false), port: Cell::new(ptr::null()) };
             let mask = (1u64 << CGEventType::KeyDown.0) | (1u64 << CGEventType::KeyUp.0);
             let port = unsafe {
