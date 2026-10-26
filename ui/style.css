@@ -126,6 +126,11 @@ body.above { min-height: 100vh; display: flex; flex-direction: column; justify-c
 /* Transparent file and SVG thumbnails sit on a light checkerboard, so dark and light artwork both show. */
 .tile.alpha, .preview.alpha { background: repeating-conic-gradient(#fff 0 25%, #e4e4e7 0 50%) 0 0 / 8px 8px; }
 .tile.thumb.alpha img, .preview.alpha img { object-fit: contain; }
+/* A font's "Aa" sample is a mask, tinted with the text colour of the theme. */
+.tile.glyph { padding: 4px; color: var(--fg); }
+.sample { display: block; width: 100%; height: 100%; background: currentColor; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+.preview.glyph { color: var(--fg); padding: 10px; }
+.preview.glyph .sample { width: 84px; height: 84px; }
 .tile.swatch i { width: 100%; height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(127, 127, 127, .2); }
 .tile .ext { font: 600 8.5px/1 "Geist Mono", ui-monospace, monospace; letter-spacing: .02em; }
 .tile .badge {

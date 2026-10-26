@@ -102,17 +102,19 @@ Just enough stays visible to tell what the clip is and which one:
 This only changes how the list shows them; pasting gives you the clip as it
 was copied. It also works on text recognized in screenshots.
 
-### Image files and SVG
+### Image files, fonts and SVG
 
 Copied image files (SVG, PNG, JPEG, GIF, WebP, BMP, ICO, AVIF, and HEIC on
 macOS) and copied SVG markup, as Figma and icon sites put it on the clipboard,
 show a thumbnail instead of a file or code icon, with their size in pixels.
 Hold `Shift` over the row for a larger preview. Transparent artwork sits on a
-checkerboard, so black icons stay visible in dark mode.
+checkerboard, so black icons stay visible in dark mode. Font files (TTF, OTF,
+WOFF, WOFF2) show "Aa" set in that font, in the theme's text colour.
 
 The thumbnail is drawn the first time the row is shown, from the original
 file (up to 20 MB) or markup, and stored at 160 px: as JPEG when the image is
-opaque and PNG when it has transparency, usually a few KB. SVG is drawn as an
+opaque and PNG when it has transparency, usually a few KB (fonts are only
+loaded to draw their sample, then unloaded). SVG is drawn as an
 image, so scripts in it never run. PDFs and videos keep their file icon.
 
 The pin button next to the tabs shows pinned clips only. Hover a row for its

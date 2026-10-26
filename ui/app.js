@@ -349,24 +349,30 @@
     placeHighlight(true);
   }
 
-  // Image files and SVG markup get a thumbnail the first time their row is
-  // shown: the webview decodes the original, draws it small, compresses it
-  // (JPEG when opaque, PNG when not) and hands it back to be stored.
+  // Image files, font files and SVG markup get a thumbnail the first time
+  // their row is shown: the webview decodes the original, draws it small,
+  // compresses it (JPEG when opaque, PNG when not) and hands it back to be
+  // stored. A font's thumbnail is "Aa" set in it.
   const THUMB_MAX = 160;
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const VISUAL_EXT = /\.(svg|png|jpe?g|gif|webp|bmp|ico|avif|hei[cf])$/i;
-  const MIME = { svg: 'image/svg+xml', jpg: 'image/jpeg', ico: 'image/x-icon' };
+  const VISUAL_EXT = /\.(svg|png|jpe?g|gif|webp|bmp|ico|avif|hei[cf]|ttf|otf|woff2?)$/i;
+  const FONT_EXT = /\.(ttf|otf|woff2?)$/i;
+  const MIME = { svg: 'image/svg+xml', jpg: 'image/jpeg', ico: 'image/x-icon', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
+  const FONT_SAMPLE = 'Aa';
   const SVG_START = /^\s*(?:<\?[\s\S]*?\?>\s*|<!--[\s\S]*?-->\s*|<![^>]*>\s*)*<svg[\s>]/i;
   const isSvg = (c) => c.kind !== 'image' && c.kind !== 'file' && SVG_START.test(c.text);
   const tried = new Set();
   let drawing = Promise.resolve();
 
+  const visualPath = (c) => (c.kind === 'file' ? lines(c.text).find((p) => VISUAL_EXT.test(p)) : undefined);
+  const isFontFile = (c) => FONT_EXT.test(visualPath(c) || '');
+
   function visualType(c) {
     if (c.thumb || c.kind === 'image') return null;
     if (c.kind === 'file') {
-      const m = lines(c.text).map((p) => p.match(VISUAL_EXT)).find(Boolean);
-      if (!m) return null;
-      const ext = m[1].toLowerCase();
+      const path = visualPath(c);
+      if (!path) return null;
+      const ext = path.match(VISUAL_EXT)[1].toLowerCase();
       return MIME[ext] || `image/${ext}`;
     }
     return isSvg(c) ? 'image/svg+xml' : null;
@@ -400,11 +406,50 @@
   }
 
   async function makeThumb(c, type) {
-    let blob = new Blob([await call('visual_source', { id: c.id })], { type });
+    const bytes = await call('visual_source', { id: c.id });
+    const drawn = type.startsWith('font/') ? await drawFont(bytes) : await drawPicture(bytes, type);
+    if (!drawn) return;
+    const { canvas, width, height } = drawn;
+    const px = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let opaque = true;
+    for (let i = 3; i < px.length && opaque; i += 4) opaque = px[i] === 255;
+    const thumb = opaque ? canvas.toDataURL('image/jpeg', 0.82) : canvas.toDataURL('image/png');
+    await call('save_thumb', { id: c.id, thumb, width, height });
+    Object.assign(c, { thumb, width, height });
+    const i = results.findIndex((r) => r.clip.id === c.id);
+    if (i >= 0) rerender(i);
+  }
+
+  // Draws the sample in black on transparent; the tile uses it as a mask so
+  // it takes the theme's text colour. Fonts have no pixel size, so it's 0 × 0.
+  async function drawFont(bytes) {
+    const face = new FontFace(`stash-sample-${Date.now()}`, bytes);
+    await face.load();
+    document.fonts.add(face);
+    try {
+      const canvas = Object.assign(document.createElement('canvas'), { width: THUMB_MAX, height: THUMB_MAX });
+      const ctx = canvas.getContext('2d');
+      const fit = (size) => {
+        ctx.font = `${size}px "${face.family}"`;
+        const m = ctx.measureText(FONT_SAMPLE);
+        return { m, w: m.actualBoundingBoxLeft + m.actualBoundingBoxRight, h: m.actualBoundingBoxAscent + m.actualBoundingBoxDescent };
+      };
+      const probe = fit(100);
+      if (!(probe.w > 0 && probe.h > 0)) return null;
+      const { m, w, h } = fit(100 * Math.min((THUMB_MAX * 0.9) / probe.w, (THUMB_MAX * 0.9) / probe.h));
+      ctx.fillText(FONT_SAMPLE, (THUMB_MAX - w) / 2 + m.actualBoundingBoxLeft, (THUMB_MAX - h) / 2 + m.actualBoundingBoxAscent);
+      return { canvas, width: 0, height: 0 };
+    } finally {
+      document.fonts.delete(face);
+    }
+  }
+
+  async function drawPicture(bytes, type) {
+    let blob = new Blob([bytes], { type });
     let w, h, scale;
     if (type === 'image/svg+xml') {
       const s = sizedSvg(await blob.text());
-      if (!s) return;
+      if (!s) return null;
       blob = new Blob([s.markup], { type });
       ({ w, h, scale } = s);
     }
@@ -428,15 +473,7 @@
       const ctx = canvas.getContext('2d');
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let opaque = true;
-      for (let i = 3; i < px.length && opaque; i += 4) opaque = px[i] === 255;
-      const thumb = opaque ? canvas.toDataURL('image/jpeg', 0.82) : canvas.toDataURL('image/png');
-      const width = Math.max(1, Math.round(w)), height = Math.max(1, Math.round(h));
-      await call('save_thumb', { id: c.id, thumb, width, height });
-      Object.assign(c, { thumb, width, height });
-      const i = results.findIndex((r) => r.clip.id === c.id);
-      if (i >= 0) rerender(i);
+      return { canvas, width: Math.max(1, Math.round(w)), height: Math.max(1, Math.round(h)) };
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -469,9 +506,18 @@
     flush();
   }
 
+  function fontSample(thumb) {
+    const s = el('i', 'sample');
+    s.style.webkitMaskImage = s.style.maskImage = `url("${thumb}")`;
+    return s;
+  }
+
   function tile(c) {
     const t = el('div', 'tile');
-    if (c.thumb) {
+    if (c.thumb && isFontFile(c)) {
+      t.classList.add('glyph');
+      t.appendChild(fontSample(c.thumb));
+    } else if (c.thumb) {
       t.classList.add('thumb');
       if (c.kind !== 'image' && c.thumb.startsWith('data:image/png')) t.classList.add('alpha');
       const img = new Image();
@@ -965,10 +1011,14 @@
     drawThumb(c);
     if (i === sel && shiftDown && c.thumb) {
       row.classList.add('expanded');
-      const box = main.appendChild(el('div', 'preview' + (c.kind !== 'image' && c.thumb.startsWith('data:image/png') ? ' alpha' : '')));
-      const img = box.appendChild(el('img'));
-      img.src = c.thumb;
-      img.alt = '';
+      if (isFontFile(c)) {
+        main.appendChild(el('div', 'preview glyph')).appendChild(fontSample(c.thumb));
+      } else {
+        const box = main.appendChild(el('div', 'preview' + (c.kind !== 'image' && c.thumb.startsWith('data:image/png') ? ' alpha' : '')));
+        const img = box.appendChild(el('img'));
+        img.src = c.thumb;
+        img.alt = '';
+      }
     }
     if (colorMenuFor === c.id) {
       const menu = formatMenu(c);
@@ -1742,6 +1792,7 @@
   function mockInvoke(cmd, args) {
     if (cmd === 'list_clips') return Promise.resolve(window.STASH_DEMO || demoClips());
     if (cmd === 'visual_source') {
+      if (args.id === 18) return fetch('fonts/geist.woff2').then((r) => r.arrayBuffer());
       const src = demoVisuals()[args.id];
       if (!src) return Promise.reject(new Error('nothing to draw'));
       const svg = new TextEncoder().encode(src).buffer;
@@ -1810,6 +1861,7 @@
       c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
       c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
       c(17, 'code', demoVisuals()[17], 600),
+      c(18, 'file', 'C:\\Users\\alex\\Downloads\\Geist-Regular.woff2', 900, { bytes: 68200 }),
       // Made up. Split in two so secret scanners don't take it for a real key.
       c(16, 'code', 'STRIPE_SECRET_KEY=sk_' + 'live_51NzQ8vKd2Lr7XbW4eTfYp9Hm\nDATABASE_URL=postgres://app:Tr0ub4dor@db.internal:5432/main', 14000),
     ];
