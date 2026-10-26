@@ -35,3 +35,27 @@ jobs:
           path: |
             src-tauri/target/release/stash.exe
             src-tauri/target/release/bundle/nsis/*.exe
+
+  macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Rust tests
+        run: cargo test --lib
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Build
+        run: cargo tauri build --target universal-apple-darwin --bundles app,dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stash-macos
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg

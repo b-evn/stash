@@ -21,7 +21,8 @@ use clipboard_master::{CallbackResult, ClipboardHandler, Master};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, State, WindowEvent,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Position, Size,
+    State, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -77,14 +78,29 @@ fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
-fn popup(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+fn popup(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
+}
+
+// `platform` measures the screen in physical pixels on Windows and in points on macOS.
+const POINTS: bool = cfg!(target_os = "macos");
+
+fn screen_scale(w: &WebviewWindow) -> f64 {
+    if POINTS { 1.0 } else { w.scale_factor().unwrap_or(1.0) }
+}
+
+fn screen_pos(x: i32, y: i32) -> Position {
+    if POINTS { LogicalPosition::new(x, y).into() } else { PhysicalPosition::new(x, y).into() }
+}
+
+fn screen_size(w: i32, h: i32) -> Size {
+    if POINTS { LogicalSize::new(w, h).into() } else { PhysicalSize::new(w as u32, h as u32).into() }
 }
 
 fn toggle_popup(app: &AppHandle, from_tray: bool) {
     let Some(w) = popup(app) else { return };
     if w.is_visible().unwrap_or(false) {
-        let _ = w.hide();
+        hide_popup(app);
         return;
     }
     let st = app.state::<AppState>();
@@ -92,7 +108,7 @@ fn toggle_popup(app: &AppHandle, from_tray: bool) {
     let target = if from_tray { 0 } else { platform::foreground() };
     *st.target.lock().unwrap() = target;
 
-    let scale = w.scale_factor().unwrap_or(1.0);
+    let scale = screen_scale(&w);
     let px = |v: f64| (v * scale).round() as i32;
     let (cx, top, bottom) = platform::caret_or_cursor();
     let work = platform::work_area(cx, top);
@@ -106,15 +122,13 @@ fn toggle_popup(app: &AppHandle, from_tray: bool) {
     let y = y_for(&placement, height);
     *st.placement.lock().unwrap() = Some(placement);
 
-    let _ = w.set_size(PhysicalSize::new(width as u32, height as u32));
-    let _ = w.set_position(PhysicalPosition::new(x, y));
+    let _ = w.set_size(screen_size(width, height));
+    let _ = w.set_position(screen_pos(x, y));
     *st.shown_at.lock().unwrap() = Instant::now();
     let _ = app.emit("stash-show", ());
     let _ = w.show();
     let _ = w.set_focus();
-    if let Ok(h) = w.hwnd() {
-        platform::force_foreground(h.0 as isize);
-    }
+    platform::focus_popup(&w);
 }
 
 fn y_for(p: &Placement, height: i32) -> i32 {
@@ -125,6 +139,7 @@ fn y_for(p: &Placement, height: i32) -> i32 {
 fn hide_popup(app: &AppHandle) {
     if let Some(w) = popup(app) {
         let _ = w.hide();
+        platform::release_focus(&w);
     }
 }
 
@@ -354,13 +369,13 @@ fn hide_window(app: AppHandle) {
 #[tauri::command]
 fn fit_window(app: AppHandle, state: State<AppState>, height: f64) {
     let Some(w) = popup(&app) else { return };
-    let scale = w.scale_factor().unwrap_or(1.0);
+    let scale = screen_scale(&w);
     let h = height.clamp(MIN_H, MAX_H) + 2.0 * MARGIN;
     let height_px = (h * scale).round() as i32;
     *state.height_px.lock().unwrap() = height_px;
     let _ = w.set_size(LogicalSize::new(CARD_W + 2.0 * MARGIN, h));
     if let Some(p) = state.placement.lock().unwrap().as_ref() {
-        let _ = w.set_position(PhysicalPosition::new(p.x, y_for(p, height_px)));
+        let _ = w.set_position(screen_pos(p.x, y_for(p, height_px)));
     }
 }
 
@@ -404,6 +419,11 @@ impl Watcher {
 }
 
 impl ClipboardHandler for Watcher {
+    // macOS has no change notification, so the clipboard is polled; stay well inside ECHO_MS.
+    fn sleep_interval(&self) -> Duration {
+        Duration::from_millis(200)
+    }
+
     fn on_clipboard_change(&mut self) -> CallbackResult {
         if !self.paused.load(Ordering::Relaxed) {
             self.capture();
@@ -458,7 +478,8 @@ fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>) -> tauri::
     let open = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
     let pause = CheckMenuItem::with_id(app, "pause", "Pause capturing", true, false, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
-    let autostart = CheckMenuItem::with_id(app, "autostart", "Start with Windows", true, autostart_on, None::<&str>)?;
+    let autostart_label = if cfg!(target_os = "macos") { "Open at login" } else { "Start with Windows" };
+    let autostart = CheckMenuItem::with_id(app, "autostart", autostart_label, true, autostart_on, None::<&str>)?;
     let clear = MenuItem::with_id(app, "clear", "Clear history (keeps pinned)", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
@@ -486,7 +507,10 @@ fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>) -> tauri::
                 toggle_popup(tray.app_handle(), true);
             }
         });
-    if let Some(icon) = app.default_window_icon() {
+    if cfg!(target_os = "macos") {
+        // A template image is tinted by macOS to match the menu bar.
+        tray = tray.icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?).icon_as_template(true);
+    } else if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
     tray.build(app)?;
@@ -495,23 +519,58 @@ fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>) -> tauri::
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| toggle_popup(app, false)))
+    let builder = tauri::Builder::default();
+    // No app menu beyond Edit, so Cmd+C/V/X/A/Z work in the search field and Cmd+Q/W can't close stash.
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(|app| {
+        use tauri::menu::Submenu;
+        let edit = Submenu::with_items(
+            app,
+            "Edit",
+            true,
+            &[
+                &PredefinedMenuItem::undo(app, None)?,
+                &PredefinedMenuItem::redo(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::cut(app, None)?,
+                &PredefinedMenuItem::copy(app, None)?,
+                &PredefinedMenuItem::paste(app, None)?,
+                &PredefinedMenuItem::select_all(app, None)?,
+            ],
+        )?;
+        Menu::with_items(app, &[&edit])
+    });
+    builder
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || toggle_popup(&handle, false));
+        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
             list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, toggle_stack,
             paste_stack, cancel_stack, get_stack, reveal_in_explorer, open_url, copy_text, copy_fence
         ])
-        .on_window_event(|window, event| {
-            if let WindowEvent::Focused(false) = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::Focused(false) => {
                 let st = window.state::<AppState>();
                 if st.shown_at.lock().unwrap().elapsed() > BLUR_GRACE {
                     let _ = window.hide();
                 }
             }
+            WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                hide_popup(window.app_handle());
+            }
+            _ => {}
         })
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            if let Some(w) = popup(app.handle()) {
+                platform::prepare_popup(&w);
+            }
+            platform::request_access();
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let config_watch = config::Watch::new(&dir);
@@ -537,7 +596,7 @@ pub fn run() {
             watch_config(app.handle().clone(), config_watch, cfg.clone());
 
             let first_run = dir.join(".autostart-init");
-            if !first_run.exists() {
+            if !first_run.exists() && !cfg!(debug_assertions) {
                 let _ = app.autolaunch().enable();
                 let _ = std::fs::write(&first_run, b"");
             }

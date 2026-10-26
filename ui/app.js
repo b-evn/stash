@@ -3,6 +3,9 @@
   const call = tauri ? tauri.core.invoke : mockInvoke;
   const listen = tauri ? tauri.event.listen : () => {};
   const params = new URLSearchParams(location.search);
+  const MAC = /^mac/i.test(params.get('os') || navigator.platform);
+  const MOD = MAC ? '⌘' : 'Ctrl+';
+  const FILES_APP = MAC ? 'Finder' : 'Explorer';
 
   const TABS = [['all', 'All'], ['text', 'Text'], ['link', 'Links'], ['code', 'Code'], ['image', 'Images'], ['file', 'Files']];
   const SORT_LABEL = { recent: 'Recent', frequent: 'Frequent', 'a–z': 'A–Z', longest: 'Largest' };
@@ -77,6 +80,8 @@
     if (html) e.innerHTML = html;
     return e;
   };
+  // On macOS Ctrl+click is a right-click.
+  const secondary = (e) => e.button !== 0 || (MAC && e.ctrlKey);
   const noFocusSteal = (b) => b.addEventListener('mousedown', (e) => e.preventDefault());
   const byId = (id) => clips.find((c) => c.id === id);
 
@@ -84,7 +89,7 @@
     if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', theme);
     themeBtn.innerHTML = svg(theme);
-    themeBtn.title = `Theme: ${theme} (Ctrl+T)`;
+    themeBtn.title = `Theme: ${theme} (${MOD}T)`;
   }
 
   function age(ms) {
@@ -173,7 +178,7 @@
       const first = paths[0] || c.text;
       const name = baseName(first);
       if (paths.length > 1) return { title: `${name} +${paths.length - 1}`, sub: `${paths.length} files · ${size(c.bytes)}` };
-      const dir = dirName(first).replace(/^[A-Z]:\\Users\\[^\\]+/i, '~');
+      const dir = dirName(first).replace(/^(?:[A-Z]:\\Users\\[^\\]+|\/Users\/[^/]+)/i, '~');
       return { title: name, sub: [dir, size(c.bytes)].filter(Boolean).join(' · ') };
     }
     const ls = lines(c.text);
@@ -304,6 +309,7 @@
       b.addEventListener('mousedown', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (secondary(e)) return;
         copyAndHide('copy_text', { id: c.id, text: f.value });
       });
       b.addEventListener('click', (e) => e.stopPropagation());
@@ -368,7 +374,7 @@
     const b = el('button', 'ghost', svg(icon));
     b.title = title;
     noFocusSteal(b);
-    b.addEventListener('mousedown', (e) => { if (e.button === 0) { e.stopPropagation(); fn(); } });
+    b.addEventListener('mousedown', (e) => { if (e.button === 0 && !secondary(e)) { e.stopPropagation(); fn(); } });
     b.addEventListener('click', (e) => e.stopPropagation());
     return b;
   }
@@ -455,13 +461,13 @@
     const noun = { image: 'image', file: 'files', link: 'link', code: 'code', color: 'colour', text: 'text' }[c.kind];
     const items = [
       { icon: 'clipboard', label: noun ? `Paste ${noun}` : 'Paste', hint: '↵', action: () => paste(c) },
-      { icon: 'copy', label: noun ? `Copy ${noun}` : 'Copy', hint: 'Ctrl+↵', action: () => copyOnly(c) },
+      { icon: 'copy', label: noun ? `Copy ${noun}` : 'Copy', hint: `${MOD}↵`, action: () => copyOnly(c) },
     ];
     let special = null;
     if (c.kind === 'link') {
       special = { icon: 'external', label: 'Open link', action: () => runThenHide('open_url', { id: c.id }) };
     } else if (c.kind === 'file' || c.kind === 'path') {
-      special = { icon: 'folder', label: 'Show in Explorer', action: () => runThenHide('reveal_in_explorer', { id: c.id }) };
+      special = { icon: 'folder', label: `Show in ${FILES_APP}`, action: () => runThenHide('reveal_in_explorer', { id: c.id }) };
     } else if (c.kind === 'code') {
       special = { icon: 'code', label: 'Copy as fenced code', action: () => copyAndHide('copy_fence', { id: c.id, lang: guessLang(c.text) }) };
     } else if (c.kind === 'color') {
@@ -485,9 +491,9 @@
     items.push(
       menuSep(),
       { icon: inStack ? 'stackRemove' : 'stackAdd', label: inStack ? 'Remove from stack' : 'Add to stack', hint: '⇧+↵', action: () => toggleStack(c) },
-      { icon: c.pinned ? 'pinOff' : 'pin', label: c.pinned ? 'Unpin' : 'Pin', hint: 'Ctrl+P', action: () => pin(c) },
+      { icon: c.pinned ? 'pinOff' : 'pin', label: c.pinned ? 'Unpin' : 'Pin', hint: `${MOD}P`, action: () => pin(c) },
       menuSep(),
-      { icon: 'trash', label: 'Delete', hint: 'Del', danger: true, action: () => remove(c) },
+      { icon: 'trash', label: 'Delete', hint: MAC ? '⌘⌫' : 'Del', danger: true, action: () => remove(c) },
     );
     return items;
   }
@@ -847,13 +853,13 @@
     const inStack = stack.ids.includes(c.id);
     acts.append(
       action(inStack ? 'stackRemove' : 'stackAdd', inStack ? 'Remove from stack (Shift+Enter)' : 'Add to stack (Shift+Enter)', () => toggleStack(c)),
-      action(c.pinned ? 'pinOff' : 'pin', c.pinned ? 'Unpin (Ctrl+P)' : 'Pin (Ctrl+P)', () => pin(c)),
-      action('trash', 'Delete (Ctrl+D)', () => remove(c)),
+      action(c.pinned ? 'pinOff' : 'pin', `${c.pinned ? 'Unpin' : 'Pin'} (${MOD}P)`, () => pin(c)),
+      action('trash', `Delete (${MOD}D)`, () => remove(c)),
     );
     if (c.kind === 'link') {
       acts.prepend(action('external', 'Open link', () => run('open_url', { id: c.id })));
     } else if (c.kind === 'file' || c.kind === 'path') {
-      acts.prepend(action('folder', 'Show in Explorer', () => run('reveal_in_explorer', { id: c.id })));
+      acts.prepend(action('folder', `Show in ${FILES_APP}`, () => run('reveal_in_explorer', { id: c.id })));
     } else if (c.kind === 'code') {
       acts.prepend(action('code', 'Copy as fenced code block', () => copyAndHide('copy_fence', { id: c.id, lang: guessLang(c.text) })));
     } else if (c.kind === 'color') {
@@ -991,7 +997,7 @@
     }
     stackEl.appendChild(action('x', 'Clear stack', cancelStack)).classList.add('small');
     stackEl.appendChild(el('span', 'spacer'));
-    stackEl.appendChild(el('span', 'hint', '<kbd>Ctrl</kbd><kbd>V</kbd>Paste next'));
+    stackEl.appendChild(el('span', 'hint', `<kbd>${MAC ? '⌘' : 'Ctrl'}</kbd><kbd>V</kbd>Paste next`));
   }
 
   function refresh(keepSel = false) {
@@ -1076,7 +1082,7 @@
     else if (e.key === 'Tab') { filter = cycle(TABS.map((t) => t[0]), filter, e.shiftKey ? -1 : 1); refresh(); }
     else if (ctrl && e.key === 'p') { if (cur) pin(cur); }
     else if (ctrl && e.key === 'd') { if (cur) remove(cur); }
-    else if (e.key === 'Delete' && !q.value) { if (cur) remove(cur); }
+    else if ((e.key === 'Delete' || (MAC && e.metaKey && e.key === 'Backspace')) && !q.value) { if (cur) remove(cur); }
     else if (ctrl && e.key === 's') setSort();
     else if (ctrl && e.key === 't') setTheme();
     else return;
@@ -1157,6 +1163,10 @@
     });
   }).observe($('card'));
 
+  if (MAC) {
+    hintsEl.querySelectorAll('kbd').forEach((k) => { if (k.textContent === 'Ctrl') k.textContent = '⌘'; });
+    sortBtn.title = 'Sort (⌘S)';
+  }
   applyTheme();
   listen('stash-show', open);
   listen('stash-stack', (e) => setStack(e.payload));
