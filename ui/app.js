@@ -533,6 +533,15 @@
     return s;
   }
 
+  // A CSS gradient copied on its own, or as a background declaration, if the
+  // webview can draw it; the tile then shows it like a colour swatch.
+  const GRADIENT = /^(?:repeating-)?(?:linear|radial|conic)-gradient\([\s\S]*\)$/i;
+  function gradientOf(c) {
+    if (c.kind === 'image' || c.kind === 'file') return null;
+    const g = c.text.trim().replace(/^background(?:-image)?\s*:\s*/i, '').replace(/\s*;$/, '');
+    return GRADIENT.test(g) && CSS.supports('background-image', g) ? g : null;
+  }
+
   function tile(c) {
     const t = el('div', 'tile');
     if (c.thumb && isFontFile(c)) {
@@ -548,6 +557,9 @@
     } else if (c.kind === 'color') {
       t.classList.add('swatch');
       t.appendChild(el('i')).style.background = c.text.trim();
+    } else if (gradientOf(c)) {
+      t.classList.add('swatch');
+      t.appendChild(el('i')).style.backgroundImage = gradientOf(c);
     } else if (c.kind === 'file') {
       const paths = lines(c.text);
       const ext = (baseName(paths[0] || '').match(/\.([a-z0-9]{1,4})$/i) || [])[1];
@@ -1886,6 +1898,7 @@
       c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
       c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
       c(17, 'code', demoVisuals()[17], 600),
+      c(21, 'text', 'linear-gradient(135deg, #6366f1 0%, #ec4899 55%, #f59e0b 100%)', 520),
       c(20, 'text', demoVisuals()[20], 450),
       c(19, 'text', '/Users/alex/Desktop/Screenshot 2026-10-26 at 14.03.12.png', 300),
       c(18, 'file', 'C:\\Users\\alex\\Downloads\\Geist-Regular.woff2', 900, { bytes: 68200 }),
