@@ -59,6 +59,7 @@
   let pinnedOnly = false;
   let chips = [];
   let stack = [];
+  let colorMenuFor = null;
   let running = { ids: [], total: 0 };
   let sort = store.get('sort', 'recent');
   if (!StashSearch.SORTS.includes(sort)) sort = 'recent';
@@ -174,6 +175,88 @@
     return { title: ls[0] || c.text, sub: ls[1] ? ls[1] + (ls.length > 2 ? '  …' : '') : null };
   }
 
+  const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+
+  function hslToRgb(h, s, l) {
+    h = ((h % 360) + 360) % 360 / 360;
+    s = clamp(s, 0, 100) / 100;
+    l = clamp(l, 0, 100) / 100;
+    if (s === 0) {
+      const v = Math.round(l * 255);
+      return [v, v, v];
+    }
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    const hue = (t) => {
+      t = (t + 1) % 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    return [hue(h + 1 / 3), hue(h), hue(h - 1 / 3)].map((v) => Math.round(v * 255));
+  }
+
+  function rgbToHsl(r, g, b) {
+    const rr = r / 255, gg = g / 255, bb = b / 255;
+    const max = Math.max(rr, gg, bb), min = Math.min(rr, gg, bb), l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      h = max === rr ? (gg - bb) / d + (gg < bb ? 6 : 0) : max === gg ? (bb - rr) / d + 2 : (rr - gg) / d + 4;
+      h /= 6;
+    }
+    return [Math.round(h * 360) % 360, Math.round(s * 100), Math.round(l * 100)];
+  }
+
+  function parseColor(text) {
+    const t = text.trim().toLowerCase();
+    const hex = t.replace(/^#/, '');
+    if (/^[0-9a-f]{3,4}$/.test(hex)) {
+      const [r, g, b, a] = hex.split('').map((c) => parseInt(c + c, 16));
+      return { r, g, b, a: a === undefined ? 1 : a / 255 };
+    }
+    if (/^[0-9a-f]{6}([0-9a-f]{2})?$/.test(hex)) {
+      return {
+        r: parseInt(hex.slice(0, 2), 16),
+        g: parseInt(hex.slice(2, 4), 16),
+        b: parseInt(hex.slice(4, 6), 16),
+        a: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1,
+      };
+    }
+    const fn = t.match(/^(rgba?|hsla?)\(([^)]*)\)$/);
+    if (!fn) return null;
+    const parts = fn[2].split(/[,\s/]+/).filter(Boolean);
+    if (parts.length < 3) return null;
+    const num = (s, scale) => (s.endsWith('%') ? (parseFloat(s) / 100) * scale : parseFloat(s));
+    const alpha = parts[3] === undefined ? 1 : clamp(num(parts[3], 1), 0, 1);
+    if (!Number.isFinite(alpha)) return null;
+    if (fn[1].startsWith('rgb')) {
+      const [r, g, b] = parts.slice(0, 3).map((s) => Math.round(clamp(num(s, 255), 0, 255)));
+      return [r, g, b].every(Number.isFinite) ? { r, g, b, a: alpha } : null;
+    }
+    const h = parseFloat(parts[0]);
+    const s = clamp(num(parts[1], 100), 0, 100);
+    const l = clamp(num(parts[2], 100), 0, 100);
+    if (![h, s, l].every(Number.isFinite)) return null;
+    const [r, g, b] = hslToRgb(h, s, l);
+    return { r, g, b, a: alpha };
+  }
+
+  const hexByte = (n) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, '0');
+  const alphaText = (a) => String(Math.round(a * 100) / 100);
+
+  function colorFormats(text) {
+    const c = parseColor(text);
+    if (!c) return [];
+    const hex = `#${hexByte(c.r)}${hexByte(c.g)}${hexByte(c.b)}${c.a < 1 ? hexByte(c.a * 255) : ''}`.toUpperCase();
+    const rgb = c.a < 1 ? `rgba(${c.r}, ${c.g}, ${c.b}, ${alphaText(c.a)})` : `rgb(${c.r}, ${c.g}, ${c.b})`;
+    const [h, s, l] = rgbToHsl(c.r, c.g, c.b);
+    const hsl = c.a < 1 ? `hsla(${h}, ${s}%, ${l}%, ${alphaText(c.a)})` : `hsl(${h}, ${s}%, ${l}%)`;
+    return [{ label: 'HEX', value: hex }, { label: 'RGB', value: rgb }, { label: 'HSL', value: hsl }];
+  }
+
   function guessLang(text) {
     const t = text.trim();
     if (/^[[{]/.test(t)) {
@@ -197,6 +280,35 @@
       .then(() => call(cmd, args))
       .catch((e) => console.error(e))
       .finally(() => run('hide_window'));
+  }
+
+  function formatMenu(c) {
+    const formats = colorFormats(c.text);
+    if (!formats.length) return null;
+    const box = el('div', 'formats');
+    for (const f of formats) {
+      const b = el('button', 'fmt');
+      b.title = `Copy ${f.label}`;
+      b.appendChild(el('span', 'label')).textContent = f.label;
+      b.appendChild(el('code')).textContent = f.value;
+      b.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        copyAndHide('copy_text', { id: c.id, text: f.value });
+      });
+      b.addEventListener('click', (e) => e.stopPropagation());
+      box.appendChild(b);
+    }
+    return box;
+  }
+
+  function toggleColorMenu(c, i) {
+    const old = sel;
+    sel = i;
+    colorMenuFor = colorMenuFor === c.id ? null : c.id;
+    rerender(old);
+    if (i !== old) rerender(i);
+    placeHighlight(true);
   }
 
   function paint(node, text) {
@@ -268,6 +380,13 @@
       img.src = c.thumb;
       img.alt = '';
     }
+    if (colorMenuFor === c.id) {
+      const menu = formatMenu(c);
+      if (menu) {
+        row.classList.add('expanded');
+        main.appendChild(menu);
+      }
+    }
 
     const trail = el('div', 'trail');
     const info = trail.appendChild(el('span', 'info'));
@@ -286,6 +405,8 @@
       acts.prepend(action('folder', 'Show in Explorer', () => run('reveal_in_explorer', { id: c.id })));
     } else if (c.kind === 'code') {
       acts.prepend(action('code', 'Copy as fenced code block', () => copyAndHide('copy_fence', { id: c.id, lang: guessLang(c.text) })));
+    } else if (c.kind === 'color') {
+      acts.prepend(action('color', colorMenuFor === c.id ? 'Hide colour formats' : 'Copy as colour…', () => toggleColorMenu(c, i)));
     }
 
     row.append(tile(c), main, trail);
@@ -369,6 +490,7 @@
 
   function select(i, scroll = true) {
     const old = sel;
+    if (i !== sel) colorMenuFor = null;
     sel = i;
     rerender(old);
     rerender(i);
@@ -429,6 +551,7 @@
   }
 
   function refresh(keepSel = false) {
+    colorMenuFor = null;
     results = StashSearch.run(clips, query(), { filter, sort, pinned: pinnedOnly });
     if (!keepSel) sel = 0;
     sel = Math.min(sel, Math.max(Math.min(results.length, MAX_ROWS) - 1, 0));

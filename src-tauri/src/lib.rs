@@ -326,6 +326,16 @@ fn fence(text: &str, lang: &str) -> String {
 }
 
 #[tauri::command]
+fn copy_text(state: State<AppState>, id: Option<i64>, text: String) -> Result<(), String> {
+    state.quiet_until.store(now_ms() + ECHO_MS, Ordering::Relaxed);
+    arboard::Clipboard::new().and_then(|mut c| c.set_text(text)).map_err(|e| e.to_string())?;
+    if let Some(id) = id {
+        state.db.mark_used(id, now_ms()).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn copy_fence(state: State<AppState>, id: i64, lang: String) -> Result<(), String> {
     let p = state.db.payload(id).map_err(|e| e.to_string())?.ok_or("clip no longer exists")?;
     if p.kind != "code" {
@@ -500,7 +510,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
             list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, start_stack,
-            cancel_stack, get_stack, paste_joined, reveal_in_explorer, open_url, copy_fence
+            cancel_stack, get_stack, paste_joined, reveal_in_explorer, open_url, copy_text, copy_fence
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::Focused(false) = event {

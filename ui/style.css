@@ -132,6 +132,15 @@ mark { background: var(--hit); color: inherit; border-radius: 3px; box-shadow: 0
 }
 .preview img { display: block; height: 104px; max-width: 100%; object-fit: contain; border-radius: 5px; }
 
+.formats { display: grid; gap: 1px; margin-top: 7px; animation: fade .14s ease-out; }
+.formats .fmt { display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px; border-radius: 5px; text-align: left; }
+.formats .fmt:hover { background: var(--accent); }
+.formats .fmt .label { flex: none; width: 26px; color: var(--muted-fg); font-size: 10px; font-weight: 600; letter-spacing: .04em; }
+.formats .fmt code {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 11.5px/1 "Geist Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+}
+
 .trail { flex: none; display: grid; align-items: center; justify-items: end; color: var(--muted-fg); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .expanded .trail { height: 30px; }
 .trail > * { grid-area: 1 / 1; display: flex; align-items: center; transition: opacity .12s; }
