@@ -235,6 +235,24 @@
     return { title: ls[0] || c.text, sub: ls[1] ? ls[1] + (ls.length > 2 ? '  …' : '') : null };
   }
 
+  // What Shift shows of a text clip the row cuts short: its first lines as
+  // copied, with indentation kept, and what's left after them.
+  const PREVIEW_LINES = 10;
+  const PREVIEW_KINDS = new Set(['text', 'code', 'link', 'email', 'path']);
+  function textPreview(c) {
+    if (!PREVIEW_KINDS.has(c.kind) || isSvg(c) || dataUrlType(c)) return null;
+    const ls = lines(c.text);
+    const fits = c.kind === 'code' ? 40 : 44;
+    if (ls.length <= 2 && ls.every((l) => l.length <= fits)) return null;
+    const all = c.text.replace(/\s+$/, '').replace(/^\s*\n/, '').split('\n').map((l) => l.trimEnd());
+    const indent = Math.min(...all.filter(Boolean).map((l) => l.match(/^[ \t]*/)[0].length));
+    const hidden = all.length - PREVIEW_LINES;
+    let more = null;
+    if (c.len > c.text.length) more = `${size(c.len)} in total`;
+    else if (hidden > 0) more = `+${hidden} more line${hidden === 1 ? '' : 's'}`;
+    return { text: all.slice(0, PREVIEW_LINES).map((l) => l.slice(indent)).join('\n'), more };
+  }
+
   const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
   function hslToRgb(h, s, l) {
@@ -524,8 +542,8 @@
 
   // Writes text into node with search hits marked and secrets blurred
   // (all of it when hideAll), each secret in one span that unblurs on hover.
-  function paint(node, text, hideAll = false) {
-    const s = text.slice(0, 300);
+  function paint(node, text, hideAll = false, max = 300) {
+    const s = text.slice(0, max);
     const hits = query() ? StashSearch.hits(query(), s) : new Set();
     const blur = hideAll ? [[0, s.length]] : StashSecrets.find(s);
     let run = '', on = false, hidden = false, into = node;
@@ -1080,6 +1098,7 @@
     paint(main.appendChild(el('span', 'title')), d.title);
     if (d.sub) paint(main.appendChild(el('span', 'sub')), d.sub, c.kind !== 'image' && StashSecrets.privateKey(c.text));
     drawThumb(c);
+    const long = i === sel && shiftDown && !c.thumb && textPreview(c);
     if (i === sel && shiftDown && c.thumb) {
       row.classList.add('expanded');
       if (isFontFile(c)) {
@@ -1090,6 +1109,8 @@
         img.src = c.thumb;
         img.alt = '';
       }
+    } else if (long) {
+      row.classList.add('expanded', 'long');
     }
     if (colorMenuFor === c.id) {
       const menu = formatMenu(c);
@@ -1119,6 +1140,17 @@
     }
 
     row.append(tile(c), main, trail);
+    // Text gets the row's full width under the tile, wider than the title.
+    if (long) {
+      const box = row.appendChild(el('div', 'preview text'));
+      const body = box.appendChild(el('div', 'body'));
+      // A private key stays blurred from its BEGIN line on, like in the row.
+      const k = StashSecrets.privateKey(c.text) ? long.text.indexOf('PRIVATE KEY-----') : -1;
+      const cut = k < 0 ? long.text.length : k + 'PRIVATE KEY-----'.length;
+      paint(body, long.text.slice(0, cut), false, Infinity);
+      paint(body, long.text.slice(cut), true, Infinity);
+      if (long.more) box.appendChild(el('div', 'more')).textContent = long.more;
+    }
     row.addEventListener('mousemove', (e) => {
       if (menuCtl) return;
       setShift(e.shiftKey);
