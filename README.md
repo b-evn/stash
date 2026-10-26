@@ -123,6 +123,8 @@ image, so scripts in it never run. PDFs and videos keep their file icon.
 
 Code clips show the language stash guesses in their icon (`JS`, `PY`, `RS`,
 `SQL`, `JSON`…), the same guess it uses for copying as a fenced block.
+CSS gradients (`linear-gradient(…)`, `radial-…`, `conic-…`, also as a
+`background:` line) get a swatch, like colours do.
 
 The pin button next to the tabs shows pinned clips only. Hover a row for its
 quick actions: open a link in your browser, show a file in Explorer or Finder, copy code
