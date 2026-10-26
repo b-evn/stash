@@ -168,7 +168,10 @@
   const baseName = (p) => p.split(/[\\/]/).filter(Boolean).pop() || p;
   const dirName = (p) => { const i = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')); return i > 0 ? p.slice(0, i) : ''; };
 
+  const dimsOf = (c) => (c.width && c.height ? `${c.width} × ${c.height}` : null);
+
   function describe(c) {
+    if (isSvg(c)) return { title: 'SVG image', sub: [dimsOf(c), size(c.len)].filter(Boolean).join(' · ') };
     if (c.kind === 'image') {
       const dims = c.width && c.height ? `${c.width} × ${c.height}` : 'Image';
       const found = lines(c.ocr_text || '')[0];
@@ -181,7 +184,7 @@
       const name = baseName(first);
       if (paths.length > 1) return { title: `${name} +${paths.length - 1}`, sub: `${paths.length} files · ${size(c.bytes)}` };
       const dir = dirName(first).replace(/^(?:[A-Z]:\\Users\\[^\\]+|\/Users\/[^/]+)/i, '~');
-      return { title: name, sub: [dir, size(c.bytes)].filter(Boolean).join(' · ') };
+      return { title: name, sub: [dir, size(c.bytes), dimsOf(c)].filter(Boolean).join(' · ') };
     }
     const ls = lines(c.text);
     if (c.kind === 'link') return { title: (ls[0] || '').replace(/^[a-z]+:\/\//i, '').replace(/\/$/, '') };
@@ -329,6 +332,99 @@
     placeHighlight(true);
   }
 
+  // Image files and SVG markup get a thumbnail the first time their row is
+  // shown: the webview decodes the original, draws it small, compresses it
+  // (JPEG when opaque, PNG when not) and hands it back to be stored.
+  const THUMB_MAX = 160;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const VISUAL_EXT = /\.(svg|png|jpe?g|gif|webp|bmp|ico|avif|hei[cf])$/i;
+  const MIME = { svg: 'image/svg+xml', jpg: 'image/jpeg', ico: 'image/x-icon' };
+  const SVG_START = /^\s*(?:<\?[\s\S]*?\?>\s*|<!--[\s\S]*?-->\s*|<![^>]*>\s*)*<svg[\s>]/i;
+  const isSvg = (c) => c.kind !== 'image' && c.kind !== 'file' && SVG_START.test(c.text);
+  const tried = new Set();
+  let drawing = Promise.resolve();
+
+  function visualType(c) {
+    if (c.thumb || c.kind === 'image') return null;
+    if (c.kind === 'file') {
+      const m = lines(c.text).map((p) => p.match(VISUAL_EXT)).find(Boolean);
+      if (!m) return null;
+      const ext = m[1].toLowerCase();
+      return MIME[ext] || `image/${ext}`;
+    }
+    return isSvg(c) ? 'image/svg+xml' : null;
+  }
+
+  function drawThumb(c) {
+    const type = visualType(c);
+    if (!type || tried.has(c.id)) return;
+    tried.add(c.id);
+    // One at a time, and none may hold up the rest for long.
+    const timeout = new Promise((_, fail) => setTimeout(fail, 10000));
+    drawing = drawing.then(() => Promise.race([makeThumb(c, type), timeout])).catch(() => {});
+  }
+
+  // Gives the SVG a fixed size that fits the thumbnail, so it draws crisp
+  // whatever size (or none) it declares. Returns null for broken markup.
+  function sizedSvg(text) {
+    if (!/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg/.test(text)) text = text.replace(/<svg\b/i, `<svg xmlns="${SVG_NS}"`);
+    const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+    const svg = doc.documentElement;
+    if (svg.namespaceURI !== SVG_NS || svg.localName !== 'svg') return null;
+    const box = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+    const attr = (name) => (/^\s*[\d.]+(px)?\s*$/.test(svg.getAttribute(name) || '') ? parseFloat(svg.getAttribute(name)) : 0);
+    let w = attr('width') || box[2] || 0, h = attr('height') || box[3] || 0;
+    if (!(w > 0 && h > 0)) w = h = THUMB_MAX;
+    if (!svg.hasAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    const scale = THUMB_MAX / Math.max(w, h);
+    svg.setAttribute('width', String(Math.max(1, Math.round(w * scale))));
+    svg.setAttribute('height', String(Math.max(1, Math.round(h * scale))));
+    return { markup: new XMLSerializer().serializeToString(doc), w, h, scale };
+  }
+
+  async function makeThumb(c, type) {
+    let blob = new Blob([await call('visual_source', { id: c.id })], { type });
+    let w, h, scale;
+    if (type === 'image/svg+xml') {
+      const s = sizedSvg(await blob.text());
+      if (!s) return;
+      blob = new Blob([s.markup], { type });
+      ({ w, h, scale } = s);
+    }
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = new Image();
+      // onload rather than decode(), which can wait for a frame a hidden webview never draws.
+      await new Promise((loaded, failed) => {
+        img.onload = loaded;
+        img.onerror = failed;
+        img.src = url;
+      });
+      if (!w) {
+        w = img.naturalWidth;
+        h = img.naturalHeight;
+        scale = Math.min(1, THUMB_MAX / Math.max(w, h));
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let opaque = true;
+      for (let i = 3; i < px.length && opaque; i += 4) opaque = px[i] === 255;
+      const thumb = opaque ? canvas.toDataURL('image/jpeg', 0.82) : canvas.toDataURL('image/png');
+      const width = Math.max(1, Math.round(w)), height = Math.max(1, Math.round(h));
+      await call('save_thumb', { id: c.id, thumb, width, height });
+      Object.assign(c, { thumb, width, height });
+      const i = results.findIndex((r) => r.clip.id === c.id);
+      if (i >= 0) rerender(i);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
   // Writes text into node with search hits marked and secrets blurred
   // (all of it when hideAll), each secret in one span that unblurs on hover.
   function paint(node, text, hideAll = false) {
@@ -358,8 +454,9 @@
 
   function tile(c) {
     const t = el('div', 'tile');
-    if (c.kind === 'image' && c.thumb) {
+    if (c.thumb) {
       t.classList.add('thumb');
+      if (c.kind !== 'image' && c.thumb.startsWith('data:image/png')) t.classList.add('alpha');
       const img = new Image();
       img.src = c.thumb;
       img.alt = '';
@@ -833,7 +930,7 @@
 
   function renderItem(r, i) {
     const c = r.clip;
-    const row = el('div', 'item' + (i === sel ? ' sel' : '') + (c.kind === 'code' ? ' mono' : ''));
+    const row = el('div', 'item' + (i === sel ? ' sel' : '') + (c.kind === 'code' && !isSvg(c) ? ' mono' : ''));
     row.setAttribute('role', 'option');
     row.dataset.i = i;
 
@@ -841,9 +938,10 @@
     const main = el('div', 'main');
     paint(main.appendChild(el('span', 'title')), d.title);
     if (d.sub) paint(main.appendChild(el('span', 'sub')), d.sub, c.kind !== 'image' && StashSecrets.privateKey(c.text));
-    if (i === sel && shiftDown && c.kind === 'image' && c.thumb) {
+    drawThumb(c);
+    if (i === sel && shiftDown && c.thumb) {
       row.classList.add('expanded');
-      const box = main.appendChild(el('div', 'preview'));
+      const box = main.appendChild(el('div', 'preview' + (c.kind !== 'image' && c.thumb.startsWith('data:image/png') ? ' alpha' : '')));
       const img = box.appendChild(el('img'));
       img.src = c.thumb;
       img.alt = '';
@@ -1183,6 +1281,32 @@
 
   function mockInvoke(cmd, args) {
     if (cmd === 'list_clips') return Promise.resolve(window.STASH_DEMO || demoClips());
+    if (cmd === 'visual_source') {
+      const src = demoVisuals()[args.id];
+      if (!src) return Promise.reject(new Error('nothing to draw'));
+      const svg = new TextEncoder().encode(src).buffer;
+      if (args.id !== 7) return Promise.resolve(svg);
+      // The trip photos are JPEGs, so render the scene into one.
+      const img = new Image();
+      img.src = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      return new Promise((loaded) => { img.onload = loaded; }).then(() => {
+        const cv = Object.assign(document.createElement('canvas'), { width: 1600, height: 1050 });
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        return new Promise((done) => cv.toBlob(done, 'image/jpeg', 0.9));
+      }).then((b) => b.arrayBuffer());
+    }
+    if (cmd === 'get_settings') return Promise.resolve(JSON.parse(JSON.stringify(mockPrefs)));
+    if (cmd === 'set_config') {
+      // Pretend system shortcuts on Space are taken, to show the error state.
+      const taken = /^(Cmd|Super|Ctrl)\+Space$/.test(args.config.hotkey);
+      mockPrefs.config = { ...args.config, hotkey: taken ? mockPrefs.config.hotkey : args.config.hotkey };
+      return Promise.resolve({ ...mockPrefs.config });
+    }
+    if (cmd === 'set_autostart') { mockPrefs.autostart = args.on; return Promise.resolve(args.on); }
+    if (cmd === 'set_paused') mockPrefs.paused = args.on;
+    if (cmd === 'clear_history') {
+      window.STASH_DEMO = (window.STASH_DEMO || demoClips()).filter((c) => c.pinned);
+    }
     if (!mockStack) mockStack = { ids: (params.get('stack') || '').split(',').filter(Boolean).map(Number), done: Number(params.get('done')) || 0 };
     if (cmd === 'toggle_stack') {
       const has = mockStack.ids.includes(args.id);
@@ -1192,6 +1316,14 @@
     if (cmd === 'cancel_stack') mockStack = { ids: [], done: 0 };
     if (cmd === 'get_stack' || cmd === 'toggle_stack') return Promise.resolve({ ...mockStack });
     return Promise.resolve();
+  }
+
+  // Sources the demo hands out for its trip photos (7), logo file (12) and copied icon (17).
+  function demoVisuals() {
+    const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="6" y="6" width="52" height="52" rx="14" fill="#6366f1"/><path d="M22 40 L32 18 L42 40 Z" fill="#fff"/></svg>';
+    const icon = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>';
+    const trip = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 210"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c4a6e"/><stop offset="1" stop-color="#7dd3fc"/></linearGradient></defs><rect width="320" height="210" fill="url(#s)"/><path d="M0 140 L80 70 L140 120 L210 50 L320 130 L320 210 L0 210Z" fill="#f8fafc"/><path d="M0 170 L120 130 L200 165 L320 140 L320 210 L0 210Z" fill="#14532d"/></svg>';
+    return { 7: trip, 12: logo, 17: icon };
   }
 
   function demoClips() {
@@ -1217,6 +1349,7 @@
       c(13, 'image', '', 5000, { thumb: whiteboard, width: 1200, height: 800, bytes: 98000, ocr_text: 'Checkout flow: cart → payment → receipt' }),
       c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
       c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
+      c(17, 'code', demoVisuals()[17], 600),
       // Made up. Split in two so secret scanners don't take it for a real key.
       c(16, 'code', 'STRIPE_SECRET_KEY=sk_' + 'live_51NzQ8vKd2Lr7XbW4eTfYp9Hm\nDATABASE_URL=postgres://app:Tr0ub4dor@db.internal:5432/main', 14000),
     ];
