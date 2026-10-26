@@ -247,6 +247,29 @@ footer { border-top: 1px solid var(--border); color: var(--muted-fg); font-size:
 .view { --dx: 0px; display: flex; flex-direction: column; min-height: 0; animation: view-in .24s var(--ease) both; }
 .view.leave { animation: view-out .11s var(--ease) forwards; pointer-events: none; }
 
+/* Theme icons. Hovering turns the sun's rays and tilts the moon with a twinkle;
+   switching turns one out and the other in. Everything pivots on the icon's centre. */
+@keyframes sun-in { from { opacity: 0; transform: rotate(-90deg) scale(.4); } }
+@keyframes moon-in { from { opacity: 0; transform: rotate(70deg) scale(.4); } }
+@keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(0) rotate(-90deg); } 45% { opacity: 1; transform: scale(1.15) rotate(0); } }
+.sun, .moon, .core, .rays, .crescent { transform-box: view-box; transform-origin: 12px 12px; }
+.spark { transform-box: view-box; transform-origin: 19.6px 4.4px; }
+.sun, .moon { transition: transform .5s cubic-bezier(.3, 1.35, .5, 1), opacity .25s var(--ease); }
+.core { transition: transform .45s var(--ease); }
+.rays { transition: transform .6s cubic-bezier(.3, 1.35, .5, 1); }
+.crescent { transition: transform .55s cubic-bezier(.3, 1.6, .5, 1); }
+.spark { opacity: 0; transform: scale(0) rotate(-90deg); transition: transform .45s cubic-bezier(.3, 1.6, .5, 1), opacity .2s; }
+:is(button, .menu-item):hover .core { transform: scale(.86); }
+:is(button, .menu-item):hover .rays { transform: rotate(45deg) scale(1.08); }
+:is(button, .menu-item):hover .crescent { transform: rotate(-18deg); }
+:is(button, .menu-item):hover .spark { opacity: 1; transform: none; transition-delay: .06s; }
+.theme-ico[data-mode="light"] .moon { opacity: 0; transform: rotate(70deg) scale(.4); }
+.theme-ico[data-mode="dark"] .sun { opacity: 0; transform: rotate(-90deg) scale(.4); }
+.theme-ico[data-mode="dark"] .spark { animation: twinkle .8s .22s var(--ease); }
+.seg [aria-checked="true"] .sun { animation: sun-in .5s cubic-bezier(.3, 1.35, .5, 1) both; }
+.seg [aria-checked="true"] .moon { animation: moon-in .5s cubic-bezier(.3, 1.35, .5, 1) both; }
+.seg [aria-checked="true"] .moon .spark { animation: twinkle .8s .22s var(--ease); }
+
 #settings .icon { transition: transform .4s var(--ease); }
 #settings:hover .icon { transform: rotate(60deg); }
 

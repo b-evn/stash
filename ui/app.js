@@ -9,7 +9,7 @@
 
   const TABS = [['all', 'All'], ['text', 'Text'], ['link', 'Links'], ['code', 'Code'], ['image', 'Images'], ['file', 'Files']];
   const SORT_LABEL = { recent: 'Recent', frequent: 'Frequent', 'a–z': 'A–Z', longest: 'Largest' };
-  const THEMES = ['auto', 'dark', 'light'];
+  const THEMES = ['dark', 'light'];
   const MAX_ROWS = 200;
   const DAY = 864e5;
 
@@ -28,9 +28,12 @@
     pinOff: '<path d="M12 17v5"/><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89"/><path d="m2 2 20 20"/><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11"/>',
     trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
     sort: '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>',
-    auto: '<circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/>',
-    dark: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
-    light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+    contrast: '<circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/>',
+    // The theme icons are groups so style.css can animate their parts: a crescent
+    // (circle r8.5 at 12,12 bitten by r7 at 16,8) with a twinkle in the bite, and a
+    // round sun with short rays.
+    dark: '<g class="moon"><path class="crescent" d="M10.53 3.63A8.5 8.5 0 1 0 20.37 13.47 7 7 0 0 1 10.53 3.63Z"/><path class="spark" d="M19.6 2.9v3M18.1 4.4h3" stroke-width="1.6"/></g>',
+    light: '<g class="sun"><circle class="core" cx="12" cy="12" r="4.5"/><path class="rays" d="M12 2.25v2M12 19.75v2M2.25 12h2M19.75 12h2M5.11 5.11l1.41 1.41M18.89 5.11l-1.41 1.41M18.89 18.89l-1.41-1.41M5.11 18.89l1.41-1.41"/></g>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     clipboard: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -88,8 +91,12 @@
   };
   let sort = store.get('sort', 'recent');
   if (!StashSearch.SORTS.includes(sort)) sort = 'recent';
-  let theme = params.get('theme') || store.get('theme', 'auto');
-  if (!THEMES.includes(theme)) theme = 'auto';
+  // Until a theme is picked, stash follows the system's light or dark.
+  const systemDark = matchMedia('(prefers-color-scheme: dark)');
+  const systemTheme = () => (systemDark.matches ? 'dark' : 'light');
+  let pickedTheme = params.get('theme') || store.get('theme', '');
+  if (!THEMES.includes(pickedTheme)) pickedTheme = '';
+  let theme = pickedTheme || systemTheme();
 
   const el = (tag, cls, html) => {
     const e = document.createElement(tag);
@@ -104,12 +111,23 @@
   const noFocusSteal = (b) => b.addEventListener('mousedown', (e) => e.preventDefault());
   const byId = (id) => clips.find((c) => c.id === id);
 
+  // The footer button holds both icons and swaps them by data-mode, so the change animates.
+  themeBtn.innerHTML = `<svg class="icon theme-ico" viewBox="0 0 24 24">${ICON.light}${ICON.dark}</svg>`;
+  const themeIco = themeBtn.firstChild;
+
   function applyTheme() {
-    if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', theme);
-    themeBtn.innerHTML = svg(theme);
-    themeBtn.title = `Theme: ${theme} (${MOD}T)`;
+    document.documentElement.setAttribute('data-theme', theme);
+    themeIco.dataset.mode = theme;
+    themeBtn.title = `Switch to ${theme === 'dark' ? 'light' : 'dark'} (${MOD}T)`;
   }
+  function followSystem() {
+    if (pickedTheme || theme === systemTheme()) return;
+    theme = systemTheme();
+    applyTheme();
+  }
+  // Older WebKit (macOS 10.15) only has addListener.
+  if (systemDark.addEventListener) systemDark.addEventListener('change', followSystem);
+  else systemDark.addListener(followSystem);
 
   function age(ms) {
     const s = Math.max(0, (Date.now() - ms) / 1000);
@@ -1285,7 +1303,7 @@
 
   const cycle = (list, cur, dir = 1) => list[(list.indexOf(cur) + dir + list.length) % list.length];
   const setSortTo = (v) => { sort = v; store.set('sort', sort); refresh(); };
-  const setThemeTo = (v) => { theme = v; store.set('theme', theme); applyTheme(); };
+  const setThemeTo = (v) => { theme = pickedTheme = v; store.set('theme', theme); applyTheme(); };
   const setSort = () => setSortTo(cycle(StashSearch.SORTS, sort));
   const setTheme = () => setThemeTo(cycle(THEMES, theme));
 
@@ -1707,7 +1725,7 @@
       hotkeyRow(),
       switchRow({ icon: 'power', label: MAC ? 'Open at login' : 'Start with Windows', get: () => prefs.autostart, set: setAutostart }),
       segRow({
-        icon: 'auto', label: 'Theme',
+        icon: 'contrast', label: 'Theme',
         options: THEMES.map((t) => [t, svg(t), t[0].toUpperCase() + t.slice(1)]),
         get: () => theme, set: (t) => { setThemeTo(t); syncPrefs(); },
       }),
@@ -1792,6 +1810,7 @@
     clearClickGuard();
     closeMenu(false, false);
     stopRecording();
+    followSystem();
     q.value = params.get('q') || '';
     chips = [];
     absorb(true);
