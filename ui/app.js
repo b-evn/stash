@@ -375,6 +375,7 @@
     rerender(old);
     if (i !== old) rerender(i);
     placeHighlight(true);
+    scrollToSel();
   }
 
   // Image files, font files and SVG markup get a thumbnail the first time
@@ -1189,6 +1190,7 @@
     shiftDown = on;
     rerender(sel);
     placeHighlight(false);
+    scrollToSel();
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });
   document.addEventListener('keyup', (e) => { if (e.key === 'Shift') setShift(false); });
