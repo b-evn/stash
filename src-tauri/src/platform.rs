@@ -88,6 +88,10 @@ mod win {
     pub fn request_access() {}
     pub fn prepare_popup(_w: &tauri::WebviewWindow) {}
     pub fn release_focus(_w: &tauri::WebviewWindow) {}
+    pub fn set_see_through(_w: &tauri::WebviewWindow, _on: bool) {}
+    pub fn can_paste() -> bool {
+        true
+    }
     pub fn watch_screenshots(_on_new: impl Fn(&std::path::Path) + Send + 'static) {}
     pub fn copy_image_file(_path: &std::path::Path) -> bool {
         false
@@ -448,6 +452,18 @@ mod mac {
         }
     }
 
+    // An ordered-out web view doesn't redraw, so the popup is put on screen fully
+    // transparent and made opaque once the page has drawn.
+    pub fn set_see_through(w: &tauri::WebviewWindow, on: bool) {
+        if let Some(win) = ns_window(w) {
+            win.setAlphaValue(if on { 0.0 } else { 1.0 });
+        }
+    }
+
+    pub fn can_paste() -> bool {
+        trusted()
+    }
+
     fn post_paste() {
         let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState);
         for down in [true, false] {
@@ -724,6 +740,10 @@ mod other {
     pub fn prepare_popup(_w: &tauri::WebviewWindow) {}
     pub fn focus_popup(_w: &tauri::WebviewWindow) {}
     pub fn release_focus(_w: &tauri::WebviewWindow) {}
+    pub fn set_see_through(_w: &tauri::WebviewWindow, _on: bool) {}
+    pub fn can_paste() -> bool {
+        true
+    }
     pub fn watch_screenshots(_on_new: impl Fn(&std::path::Path) + Send + 'static) {}
     pub fn copy_image_file(_path: &std::path::Path) -> bool {
         false

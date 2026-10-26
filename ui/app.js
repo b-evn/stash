@@ -63,7 +63,7 @@
 
   const $ = (id) => document.getElementById(id);
   const q = $('q'), listEl = $('list'), tabsEl = $('tabs'), pill = $('pill'), chipsEl = $('chips');
-  const pinBtn = $('pinned'), sortBtn = $('sort'), themeBtn = $('theme'), hintsEl = $('hints'), stackEl = $('stackbar');
+  const pinBtn = $('pinned'), sortBtn = $('sort'), themeBtn = $('theme'), hintsEl = $('hints'), stackEl = $('stackbar'), accessEl = $('accessbar');
   const card = $('card'), homeEl = $('home'), prefsEl = $('prefs'), prefsBody = $('prefs-body'), settingsBtn = $('settings');
 
   const store = {
@@ -81,6 +81,8 @@
   let menuCtl = null;
   let clickGuard = null;
   let stack = { ids: [], done: 0 };
+  // The last paste could only copy: stash has no Accessibility access (macOS).
+  let noAccess = false;
   let mockStack = null;
   const mockPrefs = {
     config: { hotkey: 'Ctrl+Alt+V', max_items: 2000, max_clip_chars: 100000, ignore_sensitive: true, capture_images: true,
@@ -1123,6 +1125,8 @@
       const n = Number(row.dataset.i);
       if (sel !== n) select(n, false);
     });
+    // Keep typing in the search field after pressing a row.
+    row.addEventListener('mousedown', (e) => { if (e.button === 0) e.preventDefault(); });
     row.addEventListener('click', (e) => (stackClick(e) ? toggleStack(c) : paste(c)));
     return row;
   }
@@ -1232,7 +1236,17 @@
 
   function renderFooter() {
     const on = stack.ids.length > 0;
-    hintsEl.hidden = on;
+    hintsEl.hidden = on || noAccess;
+    accessEl.hidden = on || !noAccess;
+    accessEl.textContent = '';
+    if (noAccess && !on) {
+      accessEl.appendChild(el('span', 'hint')).textContent = 'Copied, not pasted';
+      accessEl.appendChild(el('span', 'spacer'));
+      const allow = accessEl.appendChild(el('button', 'ghost text warn'));
+      allow.textContent = 'Allow Accessibility to paste';
+      allow.title = 'Open Privacy & Security > Accessibility and switch on stash';
+      allow.addEventListener('click', () => run('open_access_settings'));
+    }
     stackEl.hidden = !on;
     stackEl.textContent = '';
     if (!on) return;
@@ -1272,7 +1286,9 @@
   }
 
   const run = (cmd, args) => Promise.resolve(call(cmd, args)).catch((e) => console.error(e));
-  const paste = (c) => run('paste_clip', { id: c.id });
+  const paste = (c) => run('paste_clip', { id: c.id }).then((pasted) => {
+    if (pasted === false) { noAccess = true; renderFooter(); }
+  });
   const copyOnly = (c) => run('copy_clip', { id: c.id });
 
   const setStack = (s) => { stack = s || { ids: [], done: 0 }; refresh(true); };
@@ -1825,6 +1841,7 @@
     absorb(true);
     filter = params.get('tab') || 'all';
     pinnedOnly = false;
+    noAccess = false;
     try { clips = await call('list_clips'); } catch (e) { console.error(e); clips = []; }
     try { stack = (await call('get_stack')) || stack; } catch {}
     view = target === 'settings' ? 'prefs' : 'home';
@@ -1840,6 +1857,8 @@
     if (params.get('sel')) select(Number(params.get('sel')), true);
     if (view === 'prefs') settle();
     else q.focus();
+    // The window stays see-through until this opening has been drawn.
+    requestAnimationFrame(() => requestAnimationFrame(() => run('reveal_window')));
   }
 
   let queued = false;
@@ -1903,6 +1922,7 @@
       mockStack.ids = has ? mockStack.ids.filter((id) => id !== args.id) : [...mockStack.ids, args.id];
       if (!mockStack.ids.length) mockStack.done = 0;
     }
+    if (cmd === 'paste_clip') return Promise.resolve(!params.has('blocked'));
     if (cmd === 'cancel_stack') mockStack = { ids: [], done: 0 };
     if (cmd === 'get_stack' || cmd === 'toggle_stack') return Promise.resolve({ ...mockStack, blocked: params.has('blocked') && mockStack.ids.length > 0 });
     return Promise.resolve();

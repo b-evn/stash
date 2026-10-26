@@ -195,6 +195,7 @@ footer { border-top: 1px solid var(--border); color: var(--muted-fg); font-size:
 #stackbar .ghost.small { height: 22px; min-width: 22px; margin-left: -6px; }
 #stackbar .ghost.small .icon { width: 13px; height: 13px; }
 #stackbar .warn { color: var(--danger); }
+#accessbar .warn { color: var(--danger); }
 
 .menu {
   position: fixed; z-index: 100; width: min(196px, calc(100vw - 12px)); max-height: calc(100vh - 12px);

@@ -38,6 +38,8 @@ const MAX_H: f64 = 520.0;
 const GAP: f64 = 4.0;
 const ECHO_MS: i64 = 600;
 const BLUR_GRACE: Duration = Duration::from_millis(250);
+// Shows the popup even if the page never says it has drawn.
+const REVEAL_LATE: Duration = Duration::from_millis(300);
 const CONFIG_POLL: Duration = Duration::from_millis(500);
 
 struct Placement {
@@ -149,6 +151,9 @@ fn show_popup(app: &AppHandle, w: &WebviewWindow, from_tray: bool, view: &str) {
     let y = y_for(&placement, height);
     *st.placement.lock().unwrap() = Some(placement);
 
+    // The window still holds the last frame of the previous opening; keep it see-through
+    // until the page has drawn this one (`reveal_window`), so the old frame can't flash up.
+    platform::set_see_through(w, true);
     let _ = w.set_size(screen_size(width, height));
     let _ = w.set_position(screen_pos(x, y));
     *st.shown_at.lock().unwrap() = Instant::now();
@@ -156,6 +161,25 @@ fn show_popup(app: &AppHandle, w: &WebviewWindow, from_tray: bool, view: &str) {
     let _ = w.show();
     let _ = w.set_focus();
     platform::focus_popup(w);
+
+    let handle = app.clone();
+    thread::spawn(move || {
+        thread::sleep(REVEAL_LATE);
+        let h = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            // A newer opening has its own fallback.
+            if h.state::<AppState>().shown_at.lock().unwrap().elapsed() >= REVEAL_LATE {
+                reveal_window(h.clone());
+            }
+        });
+    });
+}
+
+#[tauri::command]
+fn reveal_window(app: AppHandle) {
+    if let Some(w) = popup(&app) {
+        platform::set_see_through(&w, false);
+    }
 }
 
 fn y_for(p: &Placement, height: i32) -> i32 {
@@ -183,14 +207,19 @@ fn put_on_clipboard(state: &AppState, id: i64) -> Result<(), String> {
     state.db.mark_used(id, now_ms()).map_err(|e| e.to_string())
 }
 
+// Returns false when the clip could only be copied: stash isn't allowed to send the paste
+// (no Accessibility access on macOS), so the popup stays open to say so.
 #[tauri::command]
-fn paste_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<(), String> {
+fn paste_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<bool, String> {
     stop_running_stack(&app);
     put_on_clipboard(&state, id)?;
-    hide_popup(&app);
     let target = *state.target.lock().unwrap();
+    if target != 0 && !platform::can_paste() {
+        return Ok(false);
+    }
+    hide_popup(&app);
     thread::spawn(move || platform::paste_into(target));
-    Ok(())
+    Ok(true)
 }
 
 fn stack_status(app: &AppHandle) -> StackStatus {
@@ -683,7 +712,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
-            list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, toggle_stack,
+            list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, reveal_window, fit_window, toggle_stack,
             paste_stack, cancel_stack, get_stack, open_access_settings, reveal_in_explorer, open_url, copy_text, copy_fence, visual_source,
             save_thumb, get_settings,
             set_config, set_autostart, set_paused, clear_history, reveal_config
