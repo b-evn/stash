@@ -43,4 +43,8 @@ assert.strictEqual(texts(S.run(clips, ''))[0], 'grocery list: milk, eggs');
 assert.strictEqual(texts(S.run(clips, '', { sort: 'frequent' }))[1], 'https://github.com/anthropics');
 assert.deepStrictEqual(texts(S.run(clips, '', { sort: 'a–z' })).slice(1, 3), ['const gh = require("gh")', 'GitHub pull request #42']);
 assert.strictEqual(S.parse('@nonsense').terms.length, 1);
+assert.ok(S.run([mk('', { kind: 'image', ocr_text: 'invoice total $4,200' })], 'invoice').length);
+assert.ok(S.run([mk('', { kind: 'image', ocr_text: 'Q4 goals ship v2 API' })], 'q4').length);
+assert.strictEqual(S.run([mk('', { kind: 'image', ocr_text: 'no match here' })], 'xyzzy').length, 0);
+assert.deepStrictEqual([...S.hits('total', 'invoice total $4,200')], [8, 9, 10, 11, 12]);
 console.log('search ok');

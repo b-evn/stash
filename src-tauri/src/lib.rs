@@ -2,6 +2,7 @@ mod capture;
 mod config;
 mod db;
 mod kind;
+mod ocr;
 mod platform;
 
 use std::{
@@ -321,6 +322,7 @@ impl Watcher {
             max_image_pixels: cfg.max_image_megapixels as u64 * 1_000_000,
             images: cfg.capture_images,
             files: cfg.capture_files,
+            ocr: cfg.ocr_images && cfg.capture_images,
         };
         for _ in 0..6 {
             if let Ok(mut cb) = arboard::Clipboard::new() {

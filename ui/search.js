@@ -92,6 +92,8 @@
     longest: (a, b) => b.len - a.len || b.last_used - a.last_used,
   };
 
+  const haystack = (clip) => (clip.ocr_text ? `${clip.text}\n${clip.ocr_text}` : clip.text);
+
   function run(clips, query, opts) {
     const o = Object.assign({ filter: 'all', sort: 'recent', now: Date.now() }, opts);
     const p = parse(query);
@@ -104,19 +106,20 @@
       if (p.kinds.size && !p.kinds.has(clip.kind)) continue;
       if (tab && !tab.has(clip.kind)) continue;
       if (p.maxAge && o.now - clip.last_used > p.maxAge) continue;
-      const lower = clip.text.toLowerCase();
+      const text = haystack(clip);
+      const lower = text.toLowerCase();
       if (p.not.some((w) => lower.includes(w))) continue;
       let score = 0;
       const idx = new Set();
       let ok = true;
       for (const t of p.terms) {
-        const r = matchTerm(t, clip.text);
+        const r = matchTerm(t, text);
         if (!r) { ok = false; break; }
         score += r.score;
         r.idx.forEach((i) => idx.add(i));
       }
       if (!ok) continue;
-      out.push({ clip, idx, score: score - clip.text.length * 0.01 });
+      out.push({ clip, idx, score: score - text.length * 0.01 });
     }
     if (p.terms.length) out.sort((a, b) => b.score - a.score || cmp(a.clip, b.clip));
     else out.sort((a, b) => (b.clip.pinned - a.clip.pinned) || cmp(a.clip, b.clip));

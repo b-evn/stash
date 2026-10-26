@@ -2,7 +2,9 @@
 
 A tiny clipboard history for Windows. Press a hotkey and a small list pops up
 right at your text caret — pick a clip with the keyboard and it's pasted.
-Text, links, code, images and files all go in. Everything stays on your PC.
+Text, links, code, images and files all go in. Text inside copied images is
+recognized locally, so screenshots are searchable too. Everything stays on
+your PC.
 
 <p align="center"><img src="docs/in-use-light.png" width="520" alt="stash in use"></p>
 
@@ -65,6 +67,11 @@ A word with a capital letter matches case-sensitively. Filter words turn into
 chips as you finish them (type a space); click a chip's × to drop it.
 Combine freely: `@code !test fetch`.
 
+Text that stash recognized inside a copied image is searched along with the
+clip, and the first line is shown in the image's row. OCR runs on your machine
+through the Windows OCR engine; set `ocr_images` to `false` in the config to
+turn it off.
+
 <p align="center"><img src="docs/showcase.png" width="660" alt="filter chips, dark and light"></p>
 
 The pin button next to the tabs shows pinned clips only. The tray icon has: pause capturing, start with Windows, clear history (keeps
@@ -82,6 +89,7 @@ pinned), quit.
   "ignore_sensitive": true,
   "capture_images": true,
   "capture_files": true,
+  "ocr_images": true,
   "max_image_megapixels": 40
 }
 ```
@@ -90,9 +98,10 @@ Edits apply as soon as you save the file, no restart needed. If the file or
 the hotkey is invalid, the previous settings stay active.
 
 History lives next to it in `clips.db` (SQLite, not encrypted). Images are
-stored in full as PNG, with a small preview for the list. For copied files
-stash keeps the paths, not the files: pasting puts the same files back on
-the clipboard, so a moved or deleted file won't paste. With
+stored in full as PNG, with a small preview for the list; recognized text is
+stored next to them. For copied files stash keeps the paths, not the files:
+pasting puts the same files back on the clipboard, so a moved or deleted file
+won't paste. With
 `ignore_sensitive`, copies that password managers mark as "exclude from
 history" are never stored.
 
@@ -124,6 +133,8 @@ Tests: `node ui/search.test.js` and `cd src-tauri && cargo test --lib`.
   and a paste stack doesn't notice pastes made into them.
 - A paste stack advances 120 ms after you let go of V. An app that reads the
   clipboard later than that would get the next clip instead.
+- Image OCR uses the language packs installed in Windows. It handles ordinary
+  screenshots and photos of text; very small or stylised text can be missed.
 - Written and compile-checked against Windows targets from a Linux machine; it
   has not been run on a real Windows desktop yet, so expect to tweak placement
   and focus behaviour.
