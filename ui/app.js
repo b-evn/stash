@@ -542,6 +542,17 @@
     return GRADIENT.test(g) && CSS.supports('background-image', g) ? g : null;
   }
 
+  // The first emoji of a clip that is nothing but emoji (flags, skin tones and
+  // joined sequences included), shown large in its tile.
+  const EMOJI_ONLY = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|[#*0-9]\uFE0F?\u20E3|\u200D|\uFE0F|\s)+$/u;
+  const graphemes = (s) => (Intl.Segmenter ? [...new Intl.Segmenter().segment(s)].map((g) => g.segment) : Array.from(s));
+  function emojiOf(c) {
+    if (c.kind !== 'text') return null;
+    const t = c.text.trim();
+    if (!t || t.length > 64 || !EMOJI_ONLY.test(t) || !/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(t)) return null;
+    return graphemes(t).find((g) => g.trim());
+  }
+
   function tile(c) {
     const t = el('div', 'tile');
     if (c.thumb && isFontFile(c)) {
@@ -557,6 +568,9 @@
     } else if (c.kind === 'color') {
       t.classList.add('swatch');
       t.appendChild(el('i')).style.background = c.text.trim();
+    } else if (emojiOf(c)) {
+      t.classList.add('emoji');
+      t.appendChild(el('span')).textContent = emojiOf(c);
     } else if (gradientOf(c)) {
       t.classList.add('swatch');
       t.appendChild(el('i')).style.backgroundImage = gradientOf(c);
@@ -1898,6 +1912,7 @@
       c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
       c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
       c(17, 'code', demoVisuals()[17], 600),
+      c(22, 'text', '🚀 👍🏽 🇩🇪', 380),
       c(21, 'text', 'linear-gradient(135deg, #6366f1 0%, #ec4899 55%, #f59e0b 100%)', 520),
       c(20, 'text', demoVisuals()[20], 450),
       c(19, 'text', '/Users/alex/Desktop/Screenshot 2026-10-26 at 14.03.12.png', 300),
