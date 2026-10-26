@@ -112,6 +112,8 @@ checkerboard, so black icons stay visible in dark mode. Font files (TTF, OTF,
 WOFF, WOFF2) show "Aa" set in that font, in the theme's text colour.
 The same goes for a path to one of these files copied as text, such as from
 Finder's Copy as Pathname, Explorer's Copy as path or a terminal.
+Image data URLs (`data:image/png;base64,…`, also percent-encoded SVG) show
+the image they hold, as long as they fit within `max_clip_chars`.
 
 The thumbnail is drawn the first time the row is shown, from the original
 file (up to 20 MB) or markup, and stored at 160 px: as JPEG when the image is

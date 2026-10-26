@@ -190,6 +190,11 @@
 
   function describe(c) {
     if (isSvg(c)) return { title: 'SVG image', sub: [dimsOf(c), size(c.len)].filter(Boolean).join(' · ') };
+    const data = dataUrlType(c);
+    if (data) {
+      const type = { 'svg+xml': 'SVG', 'x-icon': 'ICO', 'vnd.microsoft.icon': 'ICO' }[data.toLowerCase()] || data.toUpperCase();
+      return { title: `${type} data URL`, sub: [dimsOf(c), size(c.len)].filter(Boolean).join(' · ') };
+    }
     if (c.kind === 'image') {
       const dims = c.width && c.height ? `${c.width} × ${c.height}` : 'Image';
       const found = lines(c.ocr_text || '')[0];
@@ -373,6 +378,9 @@
     const t = c.text.trim().replace(/^"(.*)"$/, '$1');
     return !t.includes('\n') && PATH_START.test(t) && VISUAL_EXT.test(t) ? t : undefined;
   }
+  // An image as a data URL copied as text; returns its type, such as "png" or "svg+xml".
+  const DATA_URL = /^\s*data:image\/([\w.+-]+)[;,]/i;
+  const dataUrlType = (c) => (c.kind !== 'file' && c.kind !== 'image' ? (c.text.match(DATA_URL) || [])[1] : undefined);
   const visualPath = (c) => (c.kind === 'file' ? lines(c.text).find((p) => VISUAL_EXT.test(p)) : textPath(c));
   const isFontFile = (c) => FONT_EXT.test(visualPath(c) || '');
 
@@ -383,6 +391,8 @@
       const ext = path.match(VISUAL_EXT)[1].toLowerCase();
       return MIME[ext] || `image/${ext}`;
     }
+    const data = dataUrlType(c);
+    if (data) return `image/${data.toLowerCase()}`;
     return isSvg(c) ? 'image/svg+xml' : null;
   }
 
@@ -1008,7 +1018,7 @@
 
   function renderItem(r, i) {
     const c = r.clip;
-    const row = el('div', 'item' + (i === sel ? ' sel' : '') + (c.kind === 'code' && !isSvg(c) ? ' mono' : ''));
+    const row = el('div', 'item' + (i === sel ? ' sel' : '') + (c.kind === 'code' && !isSvg(c) && !dataUrlType(c) ? ' mono' : ''));
     row.setAttribute('role', 'option');
     row.dataset.i = i;
 
@@ -1803,6 +1813,7 @@
       if (args.id === 18) return fetch('fonts/geist.woff2').then((r) => r.arrayBuffer());
       const src = demoVisuals()[args.id];
       if (!src) return Promise.reject(new Error('nothing to draw'));
+      if (src.startsWith('data:')) return fetch(src).then((r) => r.arrayBuffer());
       const svg = new TextEncoder().encode(src).buffer;
       if (args.id !== 7 && args.id !== 19) return Promise.resolve(svg);
       // The trip photos and the screenshot are raster images, so render the scene into one.
@@ -1837,12 +1848,13 @@
     return Promise.resolve();
   }
 
-  // Sources the demo hands out for its trip photos (7), logo file (12), copied icon (17) and screenshot path (19).
+  // Sources the demo hands out for its trip photos (7), logo file (12), copied icon (17), screenshot path (19) and data URL (20).
   function demoVisuals() {
     const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="6" y="6" width="52" height="52" rx="14" fill="#6366f1"/><path d="M22 40 L32 18 L42 40 Z" fill="#fff"/></svg>';
     const icon = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>';
     const trip = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 210"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c4a6e"/><stop offset="1" stop-color="#7dd3fc"/></linearGradient></defs><rect width="320" height="210" fill="url(#s)"/><path d="M0 140 L80 70 L140 120 L210 50 L320 130 L320 210 L0 210Z" fill="#f8fafc"/><path d="M0 170 L120 130 L200 165 L320 140 L320 210 L0 210Z" fill="#14532d"/></svg>';
-    return { 7: trip, 12: logo, 17: icon, 19: trip };
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAEqUlEQVR42hXOIQuGBgIA0PthV65YLBaLYcIhAxcME4YMvGCYMGTggmHCkIELhhMOGXjBcMIhAxcMZ7n/cve+8Pr705+T//7vLwSERMQkpGTkFJRU1DS0dPQMjEzMLKxs7BycXNw8vPzpz18IEBASEZOQkpFTUFJR09DS0TMwMjGzsLKxc3BycfPwfvEJ/FWAgJCImISUjJyCkoqahpaOnoGRiZmFlY2dg5OLm4f3r5/AlwIEhETEJKRk5BSUVNQ0tHT0DIxMzCysbOwcnFzcPLxffgJfCRAQEhGTkJKRU1BSUdPQ0tEzMDIxs7CysXNwcnHz8H71CRQCBIRExCSkZOQUlFTUNLR09AyMTMwsrGzsHJxc3Dy8xSfwtQABIRExCSkZOQUlFTUNLR09AyMTMwsrGzsHJxc3D+/Xn8A3AgSERMQkpGTkFJRU1DS0dPQMjEzMLKxs7BycXNw8vN98At8KEBASEZOQkpFTUFJR09DS0TMwMjGzsLKxc3BycfPwfvsJ/E2AgJCImISUjJyCkoqahpaOnoGRiZmFlY2dg5OLm4f3b59AI0BASERMQkpGTkFJRU1DS0fPwMjEzMLKxs7BycXNw9t8At8JEBASEZOQkpFTUFJR09DS0TMwMjGzsLKxc3BycfPwfvcJfC9AQEhETEJKRk5BSUVNQ0tHz8DIxMzCysbOwcnFzcP7/SfwgwABIRExCSkZOQUlFTUNLR09AyMTMwsrGzsHJxc3D+8Pn8CPAgSERMQkpGTkFJRU1DS0dPQMjEzMLKxs7BycXNw8vD9+AoMAASERMQkpGTkFJRU1DS0dPQMjEzMLKxs7BycXNw/v8An8JEBASERMQkpGTkFJRU1DS0fPwMjEzMLKxs7BycXNw/vTJ/CzAAEhETEJKRk5BSUVNQ0tHT0DIxMzCysbOwcnFzcP78+fwC8CBIRExCSkZOQUlFTUNLR09AyMTMwsrGzsHJxc3Dy8v3wCvwoQEBIRk5CSkVNQUlHT0NLRMzAyMbOwsrFzcHJx8/D++gksAgSERMQkpGTkFJRU1DS0dPQMjEzMLKxs7BycXNw8vMsn8HcBAkIiYhJSMnIKSipqGlo6egZGJmYWVjZ2Dk4ubh7ev38C/xAgICQiJiElI6egpKKmoaWjZ2BkYmZhZWPn4OTi5uH9xyfwmwABIRExCSkZOQUlFTUNLR09AyMTMwsrGzsHJxc3D+9vn8A/BQgIiYhJSMnIKSipqGlo6egZGJmYWVjZ2Dk4ubh5eP/5CRwCBIRExCSkZOQUlFTUNLR09AyMTMwsrGzsHJxc3Dy8xyfwLwECQiJiElIycgpKKmoaWjp6BkYmZhZWNnYOTi5uHt5/fQL/FiAgJCImISUjp6CkoqahpaNnYGRiZmFlY+fg5OLm4f33J/C7AAEhETEJKRk5BSUVNQ0tHT0DIxMzCysbOwcnFzcP7++fwB8CBIRExCSkZOQUlFTUNLR09AyMTMwsrGzsHJxc3Dy8f3wCjwABIRExCSkZOQUlFTUNLR09AyMTMwsrGzsHJxc3D+/zCfxHgICQiJiElIycgpKKmoaWjp6BkYmZhZWNnYOTi5uHl/8Dagnypja8P7UAAAAASUVORK5CYII=';
+    return { 7: trip, 12: logo, 17: icon, 19: trip, 20: dataUrl };
   }
 
   function demoClips() {
@@ -1869,6 +1881,7 @@
       c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
       c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
       c(17, 'code', demoVisuals()[17], 600),
+      c(20, 'text', demoVisuals()[20], 450),
       c(19, 'text', '/Users/alex/Desktop/Screenshot 2026-10-26 at 14.03.12.png', 300),
       c(18, 'file', 'C:\\Users\\alex\\Downloads\\Geist-Regular.woff2', 900, { bytes: 68200 }),
       // Made up. Split in two so secret scanners don't take it for a real key.
