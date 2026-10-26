@@ -132,6 +132,7 @@ body.above { min-height: 100vh; display: flex; flex-direction: column; justify-c
 .preview.glyph { color: var(--fg); padding: 10px; }
 .preview.glyph .sample { width: 84px; height: 84px; }
 .tile.swatch i { width: 100%; height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(127, 127, 127, .2); }
+.tile.emoji span { font: 18px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
 .tile .ext { font: 600 8.5px/1 "Geist Mono", ui-monospace, monospace; letter-spacing: .02em; }
 .tile .badge {
   position: absolute; top: -5px; left: -5px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px;
