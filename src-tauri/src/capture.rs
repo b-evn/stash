@@ -4,8 +4,9 @@ use std::borrow::Cow;
 const THUMB_MAX: u32 = 160;
 /// Largest file stash reads to draw a thumbnail of it.
 const MAX_VISUAL_BYTES: u64 = 20 * 1024 * 1024;
-/// File types the webview can draw, so they get a thumbnail.
-const VISUAL_EXTS: &[&str] = &["svg", "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif", "heic", "heif"];
+/// File types the webview can draw, so they get a thumbnail (fonts as a sample).
+const VISUAL_EXTS: &[&str] =
+    &["svg", "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif", "heic", "heif", "ttf", "otf", "woff", "woff2"];
 
 pub struct Limits {
     pub max_chars: usize,
@@ -255,6 +256,8 @@ mod tests {
         let list = format!("{}\n{}", txt.display(), png.display());
         assert_eq!(visual_source("file", &list), Some(b"png bytes".to_vec()));
         assert_eq!(visual_source("file", &txt.display().to_string()), None);
+        assert!(is_visual_path("/fonts/Inter.WOFF2") && is_visual_path("C:\\Fonts\\a.otf"));
+        assert!(!is_visual_path("/fonts/fonts.ttc"));
         assert_eq!(visual_source("file", &dir.join("gone.png").display().to_string()), None);
         std::fs::remove_dir_all(&dir).unwrap();
     }
