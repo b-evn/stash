@@ -619,20 +619,20 @@ mod mac {
         std::fs::metadata(dir).and_then(|m| m.modified()).ok()
     }
 
-    // Checks the screenshot folder's timestamp once a second and reports each new screenshot.
+    // Checks the screenshot folder's timestamp four times a second and reports each new screenshot.
     pub fn watch_screenshots(on_new: impl Fn(&Path) + Send + 'static) {
         std::thread::spawn(move || {
             let (mut dir, mut stamp, mut seen) = (PathBuf::new(), None, HashSet::new());
             let mut tick = 0u64;
             loop {
                 tick += 1;
-                if tick % 10 == 1 {
+                if tick % 40 == 1 {
                     if let Some(d) = screenshot_dir().filter(|d| *d != dir) {
                         (stamp, seen) = (modified(&d), file_names(&d));
                         dir = d;
                     }
                 }
-                sleep(Duration::from_secs(1));
+                sleep(Duration::from_millis(250));
                 let now = modified(&dir);
                 if now == stamp {
                     continue;

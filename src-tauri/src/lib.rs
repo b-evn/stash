@@ -486,6 +486,7 @@ struct Watcher {
     paused: Arc<AtomicBool>,
     quiet_until: Arc<AtomicI64>,
     cfg: Arc<RwLock<config::Config>>,
+    ocr: Sender<(String, Vec<u8>)>,
 }
 
 impl Watcher {
@@ -503,13 +504,14 @@ impl Watcher {
             max_image_pixels: cfg.max_image_megapixels as u64 * 1_000_000,
             images: cfg.capture_images,
             files: cfg.capture_files,
-            ocr: cfg.ocr_images && cfg.capture_images,
         };
         for _ in 0..6 {
             if let Ok(mut cb) = arboard::Clipboard::new() {
                 if let Some(entry) = capture::read(&mut cb, &limits) {
                     if let Err(e) = self.db.add(&entry, now_ms(), cfg.max_items) {
                         eprintln!("stash: could not save clip: {e}");
+                    } else if let (true, Some(png)) = (cfg.ocr_images, entry.data) {
+                        let _ = self.ocr.send((entry.key, png));
                     }
                 }
                 return;
@@ -517,6 +519,21 @@ impl Watcher {
             thread::sleep(Duration::from_millis(40));
         }
     }
+}
+
+// Recognizes text in image clips one at a time, after they are saved, so a
+// screenshot is in the list and ready to paste before its text is.
+fn ocr_worker(db: Arc<Db>) -> Sender<(String, Vec<u8>)> {
+    let (tx, rx) = channel::<(String, Vec<u8>)>();
+    thread::spawn(move || {
+        for (key, png) in rx {
+            let Some(text) = capture::decode_png(&png).and_then(|(w, h, rgba)| ocr::run(w, h, &rgba)) else { continue };
+            if let Err(e) = db.set_ocr(&key, &text) {
+                eprintln!("stash: could not save recognized text: {e}");
+            }
+        }
+    });
+    tx
 }
 
 impl ClipboardHandler for Watcher {
@@ -731,7 +748,8 @@ pub fn run() {
 
             let handle = app.handle().clone();
             thread::spawn(move || {
-                let watcher = Watcher { app: handle, db, paused, quiet_until, cfg };
+                let ocr = ocr_worker(db.clone());
+                let watcher = Watcher { app: handle, db, paused, quiet_until, cfg, ocr };
                 match Master::new(watcher) {
                     Ok(mut master) => {
                         if let Err(e) = master.run() {
