@@ -155,6 +155,8 @@
   function describe(c) {
     if (c.kind === 'image') {
       const dims = c.width && c.height ? `${c.width} × ${c.height}` : 'Image';
+      const found = lines(c.ocr_text || '')[0];
+      if (found) return { title: found, sub: `${dims} · ${size(c.bytes)}` };
       return { title: 'Image', sub: `${dims} · ${size(c.bytes)}` };
     }
     if (c.kind === 'file') {
@@ -552,7 +554,7 @@
     const c = (id, kind, text, ago, o = {}) => ({ id, kind, text, len: text.length, bytes: text.length, width: null, height: null, thumb: null, pinned: false, uses: 0, created: now - ago * m, last_used: now - ago * m, ...o });
     return [
       c(1, 'link', 'https://linear.app/acme/issue/INV-212/invoice-totals-off-by-one', 1),
-      c(2, 'image', '', 4, { thumb: dashboard, width: 2560, height: 1600, bytes: 412000 }),
+      c(2, 'image', '', 4, { thumb: dashboard, width: 2560, height: 1600, bytes: 412000, ocr_text: 'Q4 revenue dashboard\nARR $4.2M, up 18% year over year' }),
       c(3, 'text', 'Hi Sam,\nAttached is the invoice for September. Let me know if anything looks off.\nBest, Alex', 9, { uses: 3 }),
       c(4, 'file', 'C:\\Users\\alex\\Documents\\Invoices\\invoice-0923.pdf', 14, { bytes: 184320 }),
       c(5, 'code', 'const total = items.reduce((sum, i) => sum + i.price * i.qty, 0);\nreturn Math.round(total * 100) / 100;', 38, { uses: 5 }),
@@ -563,7 +565,7 @@
       c(10, 'text', 'Meeting moved to Thursday 14:00 — bring the Q3 numbers', 1700),
       c(11, 'number', 'DE89 3704 0044 0532 0130 00'.replace(/\s/g, ''), 2900, { pinned: true, uses: 8 }),
       c(12, 'file', 'C:\\Users\\alex\\Desktop\\brand\\logo.svg', 3100, { bytes: 6200 }),
-      c(13, 'image', '', 5000, { thumb: whiteboard, width: 1200, height: 800, bytes: 98000 }),
+      c(13, 'image', '', 5000, { thumb: whiteboard, width: 1200, height: 800, bytes: 98000, ocr_text: 'Checkout flow: cart → payment → receipt' }),
       c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
       c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
     ];

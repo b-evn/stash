@@ -10,6 +10,7 @@ pub struct Entry {
     pub key: String,
     pub kind: String,
     pub text: String,
+    pub ocr_text: String,
     pub data: Option<Vec<u8>>,
     pub thumb: Option<Vec<u8>>,
     pub width: Option<u32>,
@@ -22,6 +23,7 @@ pub struct Clip {
     pub id: i64,
     pub kind: String,
     pub text: String,
+    pub ocr_text: String,
     pub len: i64,
     pub bytes: i64,
     pub width: Option<u32>,
@@ -61,6 +63,7 @@ impl Db {
                  key       TEXT    NOT NULL UNIQUE,
                  kind      TEXT    NOT NULL,
                  text      TEXT    NOT NULL,
+                 ocr_text  TEXT    NOT NULL DEFAULT '',
                  data      BLOB,
                  thumb     BLOB,
                  width     INTEGER,
@@ -73,6 +76,14 @@ impl Db {
              );
              CREATE INDEX IF NOT EXISTS entries_last_used ON entries (last_used);",
         )?;
+        let has_ocr: i64 = conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('entries') WHERE name = 'ocr_text'",
+            [],
+            |r| r.get(0),
+        )?;
+        if has_ocr == 0 {
+            conn.execute("ALTER TABLE entries ADD COLUMN ocr_text TEXT NOT NULL DEFAULT ''", [])?;
+        }
         Ok(Self { conn: Mutex::new(conn) })
     }
 
@@ -83,10 +94,11 @@ impl Db {
     pub fn add(&self, e: &Entry, now: i64, max_items: usize) -> rusqlite::Result<()> {
         let c = self.conn();
         c.execute(
-            "INSERT INTO entries (key, kind, text, data, thumb, width, height, bytes, created, last_used)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
-             ON CONFLICT(key) DO UPDATE SET last_used = excluded.last_used",
-            params![e.key, e.kind, e.text, e.data, e.thumb, e.width, e.height, e.bytes, now],
+            "INSERT INTO entries (key, kind, text, ocr_text, data, thumb, width, height, bytes, created, last_used)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+             ON CONFLICT(key) DO UPDATE SET last_used = excluded.last_used,
+                 ocr_text = CASE WHEN excluded.ocr_text <> '' THEN excluded.ocr_text ELSE ocr_text END",
+            params![e.key, e.kind, e.text, e.ocr_text, e.data, e.thumb, e.width, e.height, e.bytes, now],
         )?;
         c.execute(
             "DELETE FROM entries WHERE pinned = 0 AND id NOT IN
@@ -100,7 +112,7 @@ impl Db {
         let c = self.conn();
         let mut stmt = c.prepare(
             "SELECT id, kind, substr(text, 1, ?1), length(text), bytes, width, height, thumb,
-                    pinned, uses, created, last_used
+                    pinned, uses, created, last_used, ocr_text
              FROM entries ORDER BY last_used DESC, id DESC",
         )?;
         let rows = stmt.query_map(params![PREVIEW_CHARS], |r| {
@@ -118,6 +130,7 @@ impl Db {
                 uses: r.get(9)?,
                 created: r.get(10)?,
                 last_used: r.get(11)?,
+                ocr_text: r.get(12)?,
             })
         })?;
         rows.collect()
@@ -161,6 +174,7 @@ mod tests {
             key: format!("t:{t}"),
             kind: "text".into(),
             text: t.into(),
+            ocr_text: String::new(),
             data: None,
             thumb: None,
             width: None,
@@ -208,6 +222,7 @@ mod tests {
             key: "img:1".into(),
             kind: "image".into(),
             text: String::new(),
+            ocr_text: "invoice total $4,200".into(),
             data: Some(vec![1, 2, 3]),
             thumb: Some(vec![9]),
             width: Some(640),
@@ -218,8 +233,61 @@ mod tests {
         let c = &db.list().unwrap()[0];
         assert_eq!(c.thumb.as_deref(), Some("data:image/png;base64,CQ=="));
         assert_eq!((c.width, c.height), (Some(640), Some(480)));
+        assert_eq!(c.ocr_text, "invoice total $4,200");
         let p = db.payload(c.id).unwrap().unwrap();
         assert_eq!((p.kind.as_str(), p.data), ("image", Some(vec![1, 2, 3])));
+    }
+
+    #[test]
+    fn recopying_an_image_backfills_ocr() {
+        let db = Db::in_memory().unwrap();
+        let mut img = Entry {
+            key: "img:2".into(),
+            kind: "image".into(),
+            text: String::new(),
+            ocr_text: String::new(),
+            data: Some(vec![1]),
+            thumb: None,
+            width: Some(1),
+            height: Some(1),
+            bytes: 1,
+        };
+        db.add(&img, 1, 10).unwrap();
+        img.ocr_text = "receipt".into();
+        db.add(&img, 2, 10).unwrap();
+        let l = db.list().unwrap();
+        assert_eq!(l.len(), 1);
+        assert_eq!((l[0].ocr_text.as_str(), l[0].last_used), ("receipt", 2));
+    }
+
+    #[test]
+    fn old_databases_gain_an_ocr_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE entries (
+                 id        INTEGER PRIMARY KEY,
+                 key       TEXT    NOT NULL UNIQUE,
+                 kind      TEXT    NOT NULL,
+                 text      TEXT    NOT NULL,
+                 data      BLOB,
+                 thumb     BLOB,
+                 width     INTEGER,
+                 height    INTEGER,
+                 bytes     INTEGER NOT NULL,
+                 pinned    INTEGER NOT NULL DEFAULT 0,
+                 uses      INTEGER NOT NULL DEFAULT 0,
+                 created   INTEGER NOT NULL,
+                 last_used INTEGER NOT NULL
+             );
+             INSERT INTO entries (key, kind, text, bytes, created, last_used)
+             VALUES ('t:old', 'text', 'old', 3, 1, 1);",
+        )
+        .unwrap();
+        let db = Db::init(conn).unwrap();
+        let old = db.list().unwrap();
+        assert_eq!((old[0].text.as_str(), old[0].ocr_text.as_str()), ("old", ""));
+        db.add(&text("new"), 2, 10).unwrap();
+        assert!(db.list().unwrap().iter().any(|c| c.text == "new"));
     }
 
     #[test]

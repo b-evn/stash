@@ -1,4 +1,4 @@
-use crate::{db::Entry, kind};
+use crate::{db::Entry, kind, ocr};
 use std::borrow::Cow;
 
 const THUMB_MAX: u32 = 160;
@@ -8,6 +8,7 @@ pub struct Limits {
     pub max_image_pixels: u64,
     pub images: bool,
     pub files: bool,
+    pub ocr: bool,
 }
 
 pub fn fnv(bytes: &[u8]) -> u64 {
@@ -22,6 +23,7 @@ pub fn text_entry(text: &str, limits: &Limits) -> Option<Entry> {
         key: format!("t:{:016x}", fnv(text.as_bytes())),
         kind: kind::detect(text).as_str().into(),
         text: text.into(),
+        ocr_text: String::new(),
         data: None,
         thumb: None,
         width: None,
@@ -40,6 +42,7 @@ pub fn files_entry(paths: &[String]) -> Option<Entry> {
         key: format!("f:{:016x}", fnv(text.as_bytes())),
         kind: "file".into(),
         text,
+        ocr_text: String::new(),
         data: None,
         thumb: None,
         width: None,
@@ -55,10 +58,12 @@ pub fn image_entry(width: u32, height: u32, rgba: &[u8], limits: &Limits) -> Opt
     }
     let png = encode_png(width, height, rgba)?;
     let (tw, th, small) = thumbnail(width, height, rgba, THUMB_MAX);
+    let ocr_text = if limits.ocr { ocr::run(width, height, rgba).unwrap_or_default() } else { String::new() };
     Some(Entry {
         key: format!("i:{:016x}", fnv(rgba)),
         kind: "image".into(),
         text: String::new(),
+        ocr_text,
         bytes: png.len() as i64,
         thumb: encode_png(tw, th, &small),
         data: Some(png),
@@ -153,7 +158,7 @@ pub fn write(cb: &mut arboard::Clipboard, kind: &str, text: &str, data: Option<&
 mod tests {
     use super::*;
 
-    const LIMITS: Limits = Limits { max_chars: 100, max_image_pixels: 1_000_000, images: true, files: true };
+    const LIMITS: Limits = Limits { max_chars: 100, max_image_pixels: 1_000_000, images: true, files: true, ocr: false };
 
     #[test]
     fn png_round_trip_and_thumbnail() {
@@ -163,6 +168,7 @@ mod tests {
         assert_eq!(decode_png(e.data.as_ref().unwrap()).unwrap(), (w, h, rgba.clone()));
         let (tw, th, _) = decode_png(e.thumb.as_ref().unwrap()).unwrap();
         assert_eq!((tw, th), (160, 80));
+        assert!(e.ocr_text.is_empty());
         assert_eq!(e.key, image_entry(w, h, &rgba, &LIMITS).unwrap().key);
     }
 

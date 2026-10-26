@@ -16,6 +16,7 @@ pub struct Config {
     pub ignore_sensitive: bool,
     pub capture_images: bool,
     pub capture_files: bool,
+    pub ocr_images: bool,
     pub max_image_megapixels: u32,
 }
 
@@ -28,6 +29,7 @@ impl Default for Config {
             ignore_sensitive: true,
             capture_images: true,
             capture_files: true,
+            ocr_images: true,
             max_image_megapixels: 40,
         }
     }
