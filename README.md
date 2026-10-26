@@ -212,16 +212,18 @@ on macOS the Xcode command line tools.
 cargo install tauri-cli --version "^2" --locked
 cd src-tauri
 cargo tauri dev      # run
-cargo tauri build    # Windows: exe + installer · macOS: stash.app + .dmg (in target/release/bundle)
+cargo tauri build    # Windows: exe + installer (in target/release/bundle)
+../scripts/build-mac.sh   # macOS: stash.app + .dmg (in target/release/bundle)
 ```
 
 On Windows `target/release/stash.exe` is a single portable file. On macOS
 drag `stash.app` to Applications. The build is signed ad hoc but not
 notarized, so macOS blocks the first launch: open System Settings → Privacy &
-Security and choose Open Anyway. Each new build also has to be allowed under
-Accessibility again. Every push to `main` also builds both in GitHub
-Actions (artifacts `stash-windows` and `stash-macos`), so you don't need a
-local toolchain.
+Security and choose Open Anyway. `build-mac.sh` signs again so that macOS
+recognizes later builds as the same app and keeps the Accessibility
+permission (a plain `cargo tauri build` signs each build as a new app).
+Every push to `main` also builds both in GitHub Actions (artifacts
+`stash-windows` and `stash-macos`), so you don't need a local toolchain.
 
 Tests: `node ui/search.test.js`, `node ui/secrets.test.js` and `cd src-tauri && cargo test --lib`.
 `ui/index.html` also opens in a plain browser with demo data for UI work.

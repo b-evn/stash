@@ -54,7 +54,7 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
       - name: Build
-        run: cargo tauri build --target universal-apple-darwin --bundles app,dmg
+        run: ../scripts/build-mac.sh --target universal-apple-darwin
       - uses: actions/upload-artifact@v7
         with:
           name: stash-macos
