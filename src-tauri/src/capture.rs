@@ -121,6 +121,38 @@ pub fn text_path(text: &str) -> Option<String> {
     }
 }
 
+/// The image in a `data:image/…` URL copied as text, base64 or percent-encoded.
+pub fn data_url_image(text: &str) -> Option<Vec<u8>> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let t = text.trim();
+    let rest = t.get(..11).filter(|p| p.eq_ignore_ascii_case("data:image/")).map(|_| &t[11..])?;
+    let (meta, body) = rest.split_once(',')?;
+    if meta.contains(char::is_whitespace) {
+        return None;
+    }
+    if meta.to_ascii_lowercase().ends_with(";base64") {
+        STANDARD.decode(body.split_whitespace().collect::<String>()).ok()
+    } else {
+        percent_decode(body)
+    }
+}
+
+fn percent_decode(s: &str) -> Option<Vec<u8>> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' {
+            out.push(u8::from_str_radix(s.get(i + 1..i + 3)?, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    Some(out)
+}
+
 fn read_visual(path: &str) -> Option<Vec<u8>> {
     let meta = std::fs::metadata(path).ok()?;
     if !meta.is_file() || meta.len() > MAX_VISUAL_BYTES {
@@ -130,15 +162,15 @@ fn read_visual(path: &str) -> Option<Vec<u8>> {
 }
 
 /// The bytes a clip's thumbnail is drawn from: the first image among copied
-/// files, an image path copied as text, or copied SVG markup. Image clips
-/// have their thumbnail already.
+/// files, an image path or data URL copied as text, or copied SVG markup.
+/// Image clips have their thumbnail already.
 pub fn visual_source(kind: &str, text: &str) -> Option<Vec<u8>> {
     match kind {
         "image" => None,
         "file" => read_visual(text.lines().map(str::trim).find(|p| is_visual_path(p))?),
         _ => match text_path(text) {
             Some(path) => read_visual(&path),
-            None => is_svg(text).then(|| text.trim().as_bytes().to_vec()),
+            None => data_url_image(text).or_else(|| is_svg(text).then(|| text.trim().as_bytes().to_vec())),
         },
     }
 }
@@ -299,6 +331,17 @@ mod tests {
         assert_eq!(text_path("logo.png"), None);
         assert_eq!(text_path("/Users/me/notes.txt"), None);
         assert_eq!(text_path("/a.png\n/b.png"), None);
+    }
+
+    #[test]
+    fn data_urls_are_decoded() {
+        assert_eq!(data_url_image("data:image/png;base64,aGVs\nbG8="), Some(b"hello".to_vec()));
+        assert_eq!(data_url_image(" DATA:IMAGE/GIF;BASE64,aGk= "), Some(b"hi".to_vec()));
+        assert_eq!(data_url_image("data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C/svg%3E"), Some(b"<svg></svg>".to_vec()));
+        assert_eq!(data_url_image("data:image/svg+xml,%3Csvg%3"), None);
+        assert_eq!(data_url_image("data:text/html;base64,aGk="), None);
+        assert_eq!(data_url_image("see data:image/png;base64,aGk="), None);
+        assert_eq!(visual_source("text", "data:image/png;base64,aGk="), Some(b"hi".to_vec()));
     }
 
     #[test]
