@@ -46,12 +46,22 @@
     check: '<path d="M20 6 9 17l-5-5"/>',
     chevron: '<path d="m9 18 6-6-6-6"/>',
     chart: '<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="5" width="3" height="13" rx="1"/>',
+    settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+    back: '<path d="m15 18-6-6 6-6"/>',
+    keyboard: '<path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/>',
+    power: '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
+    pause: '<circle cx="12" cy="12" r="10"/><line x1="10" x2="10" y1="15" y2="9"/><line x1="14" x2="14" y1="15" y2="9"/>',
+    scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/>',
+    camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+    key: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
+    history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   };
   const svg = (name) => `<svg class="icon" viewBox="0 0 24 24">${ICON[name]}</svg>`;
 
   const $ = (id) => document.getElementById(id);
   const q = $('q'), listEl = $('list'), tabsEl = $('tabs'), pill = $('pill'), chipsEl = $('chips');
   const pinBtn = $('pinned'), sortBtn = $('sort'), themeBtn = $('theme'), hintsEl = $('hints'), stackEl = $('stackbar');
+  const card = $('card'), homeEl = $('home'), prefsEl = $('prefs'), prefsBody = $('prefs-body'), settingsBtn = $('settings');
 
   const store = {
     get: (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } },
@@ -69,6 +79,13 @@
   let clickGuard = null;
   let stack = { ids: [], done: 0 };
   let mockStack = null;
+  const mockPrefs = {
+    config: { hotkey: 'Ctrl+Alt+V', max_items: 2000, max_clip_chars: 100000, ignore_sensitive: true, capture_images: true,
+      capture_files: true, ocr_images: true, max_image_megapixels: 40, capture_screenshots: true },
+    autostart: true,
+    paused: false,
+    version: '0.1.0',
+  };
   let sort = store.get('sort', 'recent');
   if (!StashSearch.SORTS.includes(sort)) sort = 'recent';
   let theme = params.get('theme') || store.get('theme', 'auto');
@@ -547,6 +564,13 @@
     action: cancelStack,
   });
 
+  const settingsItem = () => ({
+    icon: 'settings',
+    label: 'Settings',
+    hint: `${MOD},`,
+    action: () => showView('prefs'),
+  });
+
   const hideItem = () => ({
     icon: 'x',
     label: 'Hide stash',
@@ -561,7 +585,7 @@
     if (!noClearSearch && (q.value || chips.length)) extra.push(clearSearchItem());
     if (!noClearStack && stack.ids.length) extra.push(clearStackItem());
     if (extra.length) items.push(menuSep(), ...extra);
-    items.push(menuSep(), hideItem());
+    items.push(menuSep(), settingsItem(), hideItem());
     return items;
   }
 
@@ -1171,9 +1195,11 @@
   }
 
   document.addEventListener('keydown', (e) => {
+    if (view !== 'home') { onPrefsKey(e); return; }
     const ctrl = e.ctrlKey || e.metaKey;
     const cur = results[sel] && results[sel].clip;
-    if (ctrl && /^[1-9]$/.test(e.key)) { const r = results[Number(e.key) - 1]; if (r) paste(r.clip); }
+    if (ctrl && e.key === ',') showView('prefs');
+    else if (ctrl && /^[1-9]$/.test(e.key)) { const r = results[Number(e.key) - 1]; if (r) paste(r.clip); }
     else if (e.key === 'ArrowDown' || (ctrl && e.key === 'j')) move(1);
     else if (e.key === 'ArrowUp' || (ctrl && e.key === 'k')) move(-1);
     else if (e.key === 'PageDown') move(6);
@@ -1199,6 +1225,7 @@
 
   document.addEventListener('contextmenu', (e) => {
     e.preventDefault();
+    if (view !== 'home') return;
     if (menuCtl && menuCtl.panels.some((p) => p.root.contains(e.target))) return;
     const target = e.target instanceof Element ? e.target : e.target && e.target.parentElement;
     if (!target) return;
@@ -1233,15 +1260,438 @@
     openMenu(appMenu(), e.clientX, e.clientY, 'stash actions');
   });
 
-  [pinBtn, sortBtn, themeBtn].forEach(noFocusSteal);
+  [pinBtn, sortBtn, themeBtn, settingsBtn].forEach(noFocusSteal);
   pinBtn.innerHTML = svg('pin');
   pinBtn.addEventListener('click', () => { pinnedOnly = !pinnedOnly; refresh(); });
   sortBtn.addEventListener('click', setSort);
   themeBtn.addEventListener('click', setTheme);
+  settingsBtn.innerHTML = svg('settings');
+  settingsBtn.addEventListener('click', () => showView('prefs'));
 
-  async function open() {
+  // Settings are a second view in the same card. Switching fades the old view
+  // out, then morphs the card to the new height while the new view slides in.
+  const KEEP = [500, 1000, 2000, 5000, 10000];
+  const VIEW_OUT = 110;
+  const VIEW_MORPH = 240;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+  const prefHl = el('div', 'hl');
+  let view = 'home';
+  let morphing = false;
+  let prefs = null;
+  let prefRows = [];
+  let recording = null;
+
+  function fitCard() {
+    run('fit_window', { height: Math.ceil(card.getBoundingClientRect().height) })
+      .then((above) => document.body.classList.toggle('above', Boolean(above)));
+  }
+
+  async function showView(next, animate = true) {
+    if (next === view || morphing) return;
+    stopRecording();
+    closeMenu(false, false);
+    if (next === 'prefs') await loadPrefs();
+    const from = view === 'home' ? homeEl : prefsEl;
+    const to = next === 'home' ? homeEl : prefsEl;
+    const dir = next === 'prefs' ? 1 : -1;
+    view = next;
+    if (!animate || reducedMotion.matches) {
+      from.hidden = true;
+      to.style.setProperty('--dx', '0px');
+      to.hidden = false;
+      settle();
+      return;
+    }
+    morphing = true;
+    const h0 = card.offsetHeight;
+    from.style.setProperty('--dx', `${-8 * dir}px`);
+    from.classList.add('leave');
+    await wait(VIEW_OUT);
+    from.classList.remove('leave');
+    from.hidden = true;
+    to.style.setProperty('--dx', `${12 * dir}px`);
+    to.hidden = false;
+    settle();
+    const h1 = card.offsetHeight;
+    card.style.height = `${h0}px`;
+    // Grow the window first so the card can animate inside it; it is fitted again at the end.
+    const above = await run('fit_window', { height: Math.max(h0, h1) });
+    document.body.classList.toggle('above', Boolean(above));
+    card.classList.add('morph');
+    void card.offsetHeight;
+    card.style.height = `${h1}px`;
+    await wait(VIEW_MORPH);
+    card.classList.remove('morph');
+    card.style.height = '';
+    morphing = false;
+    fitCard();
+  }
+
+  // Lays out the view that just became visible.
+  function settle() {
+    if (view === 'home') {
+      refresh(true);
+      renderTabs(false);
+      q.focus();
+      return;
+    }
+    prefsBody.scrollTop = 0;
+    syncPrefs(false);
+    fadeEdges();
+    placePrefHl(null);
+    prefsBody.focus({ preventScroll: true });
+  }
+
+  async function loadPrefs() {
+    try { prefs = await call('get_settings'); } catch (e) { console.error(e); }
+    if (!prefs) prefs = { config: { hotkey: 'Ctrl+Alt+V', max_items: 2000 }, autostart: false, paused: false, version: '' };
+    $('version').textContent = prefs.version ? `v${prefs.version}` : '';
+    buildPrefs();
+  }
+
+  async function savePref(key, value) {
+    const next = { ...prefs.config, [key]: value };
+    prefs.config = next;
+    syncPrefs();
+    prefs.config = (await run('set_config', { config: next })) || next;
+    syncPrefs();
+  }
+
+  async function setAutostart(on) {
+    prefs.autostart = on;
+    syncPrefs();
+    const now = await run('set_autostart', { on });
+    if (now !== undefined) prefs.autostart = Boolean(now);
+    syncPrefs();
+  }
+
+  function setPaused(on) {
+    prefs.paused = on;
+    syncPrefs();
+    run('set_paused', { on });
+  }
+
+  const syncPrefs = (animate = true) => prefRows.forEach((r) => r.sync(animate));
+
+  // The shortcut is stored the way the global-shortcut parser reads it ("Ctrl+Alt+V")
+  // and shown as keycaps: ⌃ ⌥ V on macOS, Ctrl Alt V elsewhere.
+  const MOD_NAME = { CTRL: 'Ctrl', CONTROL: 'Ctrl', ALT: 'Alt', OPTION: 'Alt', SHIFT: 'Shift', CMD: 'Cmd', COMMAND: 'Cmd', SUPER: 'Cmd',
+    CMDORCTRL: MAC ? 'Cmd' : 'Ctrl', CMDORCONTROL: MAC ? 'Cmd' : 'Ctrl', COMMANDORCTRL: MAC ? 'Cmd' : 'Ctrl', COMMANDORCONTROL: MAC ? 'Cmd' : 'Ctrl' };
+  const MOD_ORDER = ['Ctrl', 'Alt', 'Shift', 'Cmd'];
+  const MOD_CAP = MAC ? { Ctrl: '⌃', Alt: '⌥', Shift: '⇧', Cmd: '⌘' } : { Ctrl: 'Ctrl', Alt: 'Alt', Shift: 'Shift', Cmd: 'Win' };
+  const KEY_CAP = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Comma: ',', Period: '.', Slash: '/', Semicolon: ';',
+    Quote: "'", Backquote: '`', BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Enter: '↵',
+    Backspace: '⌫', Delete: 'Del', PageUp: 'PgUp', PageDown: 'PgDn' };
+  const HOTKEY_CODE = /^(Key[A-Z]|Digit\d|F([1-9]|1[0-2])|Space|Comma|Period|Slash|Semicolon|Quote|Backquote|BracketLeft|BracketRight|Backslash|Minus|Equal|Arrow(Up|Down|Left|Right)|Enter|Backspace|Delete|Home|End|PageUp|PageDown|Insert)$/;
+  const keyName = (code) => code.replace(/^(?:Key|Digit)(.)$/, '$1');
+
+  function hotkeyCaps(hotkey) {
+    const parts = hotkey.split('+').map((p) => p.trim()).filter(Boolean);
+    const key = keyName(parts.pop() || '');
+    const mods = parts.map((p) => MOD_NAME[p.toUpperCase()] || p).sort((a, b) => MOD_ORDER.indexOf(a) - MOD_ORDER.indexOf(b));
+    return [...mods.map((m) => MOD_CAP[m] || m), KEY_CAP[key] || (key.length === 1 ? key.toUpperCase() : key)];
+  }
+
+  const heldMods = (e) => [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Cmd'].filter(Boolean);
+
+  function paintCaps(box, caps, pop) {
+    box.textContent = '';
+    for (const cap of caps) box.appendChild(el('kbd', pop ? 'pop' : '')).textContent = cap;
+  }
+
+  function rowShell(tag, icon, label, sub) {
+    const row = el(tag, 'set-row');
+    row.appendChild(el('span', 'set-ico', svg(icon)));
+    const text = row.appendChild(el('span', 'set-text'));
+    text.appendChild(el('span', 'set-label')).textContent = label;
+    const subEl = text.appendChild(el('span', 'set-sub'));
+    subEl.textContent = sub || '';
+    subEl.hidden = !sub;
+    return { row, subEl };
+  }
+
+  function setSub(r, text, bad = false) {
+    r.subEl.textContent = text;
+    r.subEl.hidden = !text;
+    r.subEl.classList.toggle('bad', bad);
+  }
+
+  function shake(node) {
+    node.classList.remove('bad');
+    void node.offsetWidth;
+    node.classList.add('bad');
+  }
+
+  // The whole row is the switch.
+  function switchRow({ icon, label, sub, get, set, disabled }) {
+    const { row } = rowShell('button', icon, label, sub);
+    row.classList.add('ctl');
+    row.setAttribute('role', 'switch');
+    row.appendChild(el('span', 'switch'));
+    row.addEventListener('click', () => set(!get()));
+    return {
+      row,
+      ctl: row,
+      sync() {
+        row.setAttribute('aria-checked', String(Boolean(get())));
+        row.disabled = Boolean(disabled && disabled());
+      },
+    };
+  }
+
+  function segRow({ icon, label, sub, options, get, set }) {
+    const { row } = rowShell('div', icon, label, sub);
+    const seg = row.appendChild(el('div', 'seg ctl'));
+    seg.tabIndex = 0;
+    seg.setAttribute('role', 'radiogroup');
+    seg.setAttribute('aria-label', label);
+    const pill = seg.appendChild(el('span', 'seg-pill'));
+    const buttons = options.map(([value, html, title]) => {
+      const b = seg.appendChild(el('button', '', html));
+      b.tabIndex = -1;
+      b.setAttribute('role', 'radio');
+      if (title) b.title = title;
+      b.addEventListener('click', () => { if (value !== get()) set(value); seg.focus({ preventScroll: true }); });
+      return [value, b];
+    });
+    seg.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const values = buttons.map(([v]) => v);
+      const next = values[clamp(values.indexOf(get()) + (e.key === 'ArrowRight' ? 1 : -1), 0, values.length - 1)];
+      if (next !== get()) set(next);
+    });
+    return {
+      row,
+      ctl: seg,
+      sync(animate = true) {
+        let on = null;
+        for (const [v, b] of buttons) {
+          b.setAttribute('aria-checked', String(v === get()));
+          if (v === get()) on = b;
+        }
+        if (!on || !seg.offsetWidth) return;
+        if (!animate) pill.style.transition = 'none';
+        pill.style.transform = `translateX(${on.offsetLeft - 2}px)`;
+        pill.style.width = on.offsetWidth + 'px';
+        if (!animate) { void pill.offsetWidth; pill.style.transition = ''; }
+      },
+    };
+  }
+
+  function hotkeyRow() {
+    const sub = 'Opens stash from any app';
+    const { row, subEl } = rowShell('div', 'keyboard', 'Shortcut', sub);
+    const btn = row.appendChild(el('button', 'keys ctl'));
+    btn.title = 'Change shortcut';
+    let shown = null;
+    const r = {
+      row,
+      ctl: btn,
+      subEl,
+      sub,
+      sync() {
+        if (recording === r || shown === prefs.config.hotkey) return;
+        paintCaps(btn, hotkeyCaps(prefs.config.hotkey), shown !== null);
+        shown = prefs.config.hotkey;
+      },
+      repaint() { shown = null; r.sync(); },
+    };
+    btn.addEventListener('click', () => (recording ? stopRecording() : startRecording(r)));
+    return r;
+  }
+
+  function startRecording(r) {
+    recording = r;
+    r.ctl.classList.remove('bad');
+    r.ctl.classList.add('rec');
+    r.ctl.innerHTML = '<span class="rec-dot"></span><span class="rec-text">Press keys</span>';
+    setSub(r, `Hold ${MAC ? '⌘, ⌃ or ⌥' : 'Ctrl or Alt'} and press a key · Esc cancels`);
+  }
+
+  function stopRecording() {
+    const r = recording;
+    if (!r) return;
+    recording = null;
+    r.ctl.classList.remove('rec');
+    setSub(r, r.sub);
+    r.repaint();
+  }
+
+  function onRecordKey(e) {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const r = recording;
+    const mods = heldMods(e);
+    if (e.type === 'keyup' || ['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+      if (mods.length) paintCaps(r.ctl, [...mods.map((m) => MOD_CAP[m]), '…'], false);
+      else startRecording(r);
+      return;
+    }
+    if (e.key === 'Escape') { stopRecording(); return; }
+    const fn = /^F\d+$/.test(e.code);
+    if (!HOTKEY_CODE.test(e.code) || !(e.ctrlKey || e.altKey || e.metaKey || fn)) { shake(r.ctl); return; }
+    const hotkey = [...mods.map((m) => (m === 'Cmd' && !MAC ? 'Super' : m)), keyName(e.code)].join('+');
+    stopRecording();
+    setHotkey(r, hotkey);
+  }
+  document.addEventListener('keydown', onRecordKey, true);
+  document.addEventListener('keyup', onRecordKey, true);
+  window.addEventListener('blur', stopRecording);
+
+  async function setHotkey(r, hotkey) {
+    if (hotkey === prefs.config.hotkey) return;
+    await savePref('hotkey', hotkey);
+    if (prefs.config.hotkey === hotkey) return;
+    shake(r.ctl);
+    setSub(r, `${hotkeyCaps(hotkey).join(MAC ? '' : '+')} is taken, try another`, true);
+  }
+
+  function clearRow() {
+    const { row, subEl } = rowShell('div', 'trash', 'Clear history', '');
+    const btn = row.appendChild(el('button', 'pbtn danger ctl'));
+    btn.textContent = 'Clear';
+    let armed = null;
+    const reset = () => {
+      clearTimeout(armed);
+      armed = null;
+      btn.classList.remove('arm', 'done');
+      btn.textContent = 'Clear';
+      r.sync();
+    };
+    const r = {
+      row,
+      ctl: btn,
+      sync() {
+        const n = clips.filter((c) => !c.pinned).length;
+        const pinned = clips.length - n;
+        const text = n ? `${n.toLocaleString()} clip${n === 1 ? '' : 's'}${pinned ? ` · ${pinned} pinned stay` : ''}` : 'Nothing to clear';
+        setSub(r, text);
+        btn.disabled = !n && !btn.classList.contains('done');
+      },
+      subEl,
+    };
+    // First click arms the button for three seconds, the second one clears.
+    btn.addEventListener('click', async () => {
+      if (btn.classList.contains('done')) return;
+      if (!armed) {
+        btn.classList.add('arm');
+        btn.textContent = 'Confirm';
+        armed = setTimeout(reset, 3000);
+        return;
+      }
+      clearTimeout(armed);
+      armed = null;
+      await run('clear_history');
+      try { clips = await call('list_clips'); } catch (e) { console.error(e); }
+      btn.classList.remove('arm');
+      btn.classList.add('done');
+      btn.innerHTML = svg('check') + 'Cleared';
+      r.sync();
+      armed = setTimeout(reset, 1600);
+    });
+    return r;
+  }
+
+  function buildPrefs() {
+    prefsBody.textContent = '';
+    prefsBody.appendChild(prefHl);
+    const flag = (key) => ({ get: () => prefs.config[key], set: (v) => savePref(key, v) });
+    const short = (n) => (n >= 1000 ? `${n / 1000}k` : String(n));
+    const keep = [...new Set([...KEEP, prefs.config.max_items])].filter(Boolean).sort((a, b) => a - b);
+    const rows = [
+      'General',
+      hotkeyRow(),
+      switchRow({ icon: 'power', label: MAC ? 'Open at login' : 'Start with Windows', get: () => prefs.autostart, set: setAutostart }),
+      segRow({
+        icon: 'auto', label: 'Theme',
+        options: THEMES.map((t) => [t, svg(t), t[0].toUpperCase() + t.slice(1)]),
+        get: () => theme, set: (t) => { setThemeTo(t); syncPrefs(); },
+      }),
+      'Capture',
+      switchRow({ icon: 'pause', label: 'Pause capturing', sub: 'New copies are ignored until you resume', get: () => prefs.paused, set: setPaused }),
+      switchRow({ icon: 'image', label: 'Images', ...flag('capture_images') }),
+      switchRow({ icon: 'scan', label: 'Text in images', sub: 'Recognized on this device, for search', ...flag('ocr_images'), disabled: () => !prefs.config.capture_images }),
+      switchRow({ icon: 'file', label: 'Files', sub: 'Keeps the paths, not the files', ...flag('capture_files') }),
+      MAC && switchRow({ icon: 'camera', label: 'Screenshots', sub: '⌘⇧3 and ⌘⇧4 also go on the clipboard', ...flag('capture_screenshots') }),
+      switchRow({ icon: 'key', label: 'Skip passwords', sub: 'Copies password managers mark as private', ...flag('ignore_sensitive') }),
+      'History',
+      segRow({
+        icon: 'history', label: 'Keep', sub: 'Pinned clips don’t count',
+        options: keep.map((n) => [n, short(n), `Keep the last ${n.toLocaleString()} clips`]),
+        get: () => prefs.config.max_items, set: (n) => savePref('max_items', n),
+      }),
+      clearRow(),
+    ].filter(Boolean);
+    prefRows = [];
+    rows.forEach((r, i) => {
+      const node = typeof r === 'string' ? el('div', 'group') : r.row;
+      if (typeof r === 'string') node.textContent = r;
+      else {
+        prefRows.push(r);
+        node.addEventListener('pointerenter', () => placePrefHl(node));
+      }
+      node.style.setProperty('--i', i);
+      prefsBody.appendChild(node);
+    });
+    syncPrefs(false);
+  }
+
+  function placePrefHl(row) {
+    if (!row) { prefHl.style.opacity = '0'; return; }
+    const appearing = prefHl.style.opacity !== '1';
+    if (appearing) prefHl.style.transition = 'none';
+    prefHl.style.transform = `translateY(${row.offsetTop}px)`;
+    prefHl.style.height = row.offsetHeight + 'px';
+    if (appearing) { void prefHl.offsetHeight; prefHl.style.transition = ''; }
+    prefHl.style.opacity = '1';
+  }
+
+  const focusedRow = () => (prefsBody.contains(document.activeElement) ? document.activeElement.closest('.set-row') : null);
+  prefsBody.addEventListener('focusin', () => placePrefHl(focusedRow()));
+  prefsBody.addEventListener('pointerleave', () => placePrefHl(focusedRow()));
+
+  function fadeEdges() {
+    const b = prefsBody;
+    b.style.setProperty('--fade-top', b.scrollTop > 1 ? '20px' : '0px');
+    b.style.setProperty('--fade-bottom', b.scrollTop + b.clientHeight < b.scrollHeight - 1 ? '20px' : '0px');
+  }
+  prefsBody.addEventListener('scroll', fadeEdges, { passive: true });
+
+  function onPrefsKey(e) {
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (e.key === 'Escape' || (ctrl && e.key === ',')) { e.preventDefault(); showView('home'); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const ctls = prefRows.map((r) => r.ctl).filter((c) => !c.disabled);
+    const i = ctls.indexOf(document.activeElement);
+    const down = e.key === 'ArrowDown';
+    const next = ctls[i < 0 ? (down ? 0 : ctls.length - 1) : clamp(i + (down ? 1 : -1), 0, ctls.length - 1)];
+    if (!next) return;
+    next.focus({ preventScroll: true });
+    const row = next.closest('.set-row');
+    const prev = row.previousElementSibling;
+    const top = prev && prev.classList.contains('group') ? prev.offsetTop : row.offsetTop;
+    if (top < prefsBody.scrollTop) prefsBody.scrollTop = top - 4;
+    else if (row.offsetTop + row.offsetHeight + 6 > prefsBody.scrollTop + prefsBody.clientHeight) {
+      prefsBody.scrollTop = row.offsetTop + row.offsetHeight + 6 - prefsBody.clientHeight;
+    }
+  }
+
+  const backBtn = $('back'), configBtn = $('config-file');
+  backBtn.innerHTML = svg('back');
+  backBtn.addEventListener('click', () => showView('home'));
+  configBtn.innerHTML = svg('file') + 'config.json';
+  configBtn.addEventListener('click', () => run('reveal_config'));
+  [backBtn, configBtn].forEach(noFocusSteal);
+
+  async function open(target) {
     clearClickGuard();
     closeMenu(false, false);
+    stopRecording();
     q.value = params.get('q') || '';
     chips = [];
     absorb(true);
@@ -1249,35 +1699,45 @@
     pinnedOnly = false;
     try { clips = await call('list_clips'); } catch (e) { console.error(e); clips = []; }
     try { stack = (await call('get_stack')) || stack; } catch {}
-    const card = $('card');
+    view = target === 'settings' ? 'prefs' : 'home';
+    if (view === 'prefs') await loadPrefs();
+    homeEl.hidden = view !== 'home';
+    prefsEl.hidden = view !== 'prefs';
+    prefsEl.style.setProperty('--dx', '0px');
     card.classList.remove('enter');
     void card.offsetWidth;
     card.classList.add('enter');
     refresh();
     renderTabs(false);
     if (params.get('sel')) select(Number(params.get('sel')), true);
-    q.focus();
+    if (view === 'prefs') settle();
+    else q.focus();
   }
 
   let queued = false;
   new ResizeObserver(() => {
-    if (queued) return;
+    if (queued || morphing) return;
     queued = true;
     requestAnimationFrame(() => {
       queued = false;
-      run('fit_window', { height: Math.ceil($('card').getBoundingClientRect().height) });
+      if (!morphing) fitCard();
     });
-  }).observe($('card'));
+  }).observe(card);
 
   if (MAC) {
     hintsEl.querySelectorAll('kbd').forEach((k) => { if (k.textContent === 'Ctrl') k.textContent = '⌘'; });
     sortBtn.title = 'Sort (⌘S)';
+    settingsBtn.title = 'Settings (⌘,)';
   }
   applyTheme();
-  listen('stash-show', open);
+  listen('stash-show', (e) => open(e && e.payload));
+  listen('stash-view', (e) => showView(e.payload === 'settings' ? 'prefs' : 'home'));
   listen('stash-stack', (e) => setStack(e.payload));
-  window.addEventListener('focus', () => q.focus());
-  open();
+  window.addEventListener('focus', () => {
+    if (view === 'home') q.focus();
+    else if (!prefsEl.contains(document.activeElement)) prefsBody.focus({ preventScroll: true });
+  });
+  open(params.get('view'));
 
   function mockInvoke(cmd, args) {
     if (cmd === 'list_clips') return Promise.resolve(window.STASH_DEMO || demoClips());

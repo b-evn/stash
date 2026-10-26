@@ -55,6 +55,7 @@ this needs Accessibility access (see below).
 | `Tab` / `Shift+Tab` | cycle tabs: all · text · links · code · images · files |
 | `Ctrl+S` | cycle sort: recent · frequent · a–z · largest |
 | `Ctrl+T` | theme: auto · dark · light |
+| `Ctrl+,` | settings |
 | `Backspace` (empty search) | remove the last filter chip |
 | `Esc` | clear search, then close |
 
@@ -118,10 +119,19 @@ The pin button next to the tabs shows pinned clips only. Hover a row for its
 quick actions: open a link in your browser, show a file in Explorer or Finder, copy code
 as a fenced block, copy a colour as HEX, RGB or HSL, pin or delete.
 Right-click any clip for the same actions in a stash-native menu, or
-right-click anywhere else for filters, sort, theme and hide (on macOS,
-Ctrl-click works too). The tray icon (menu bar icon on macOS) has: pause
+right-click anywhere else for filters, sort, theme, settings and hide (on
+macOS, Ctrl-click works too). The tray icon (menu bar icon on macOS) has: pause
 capturing, start with Windows / open at login, clear history (keeps pinned),
-quit.
+settings, quit.
+
+### Settings
+
+The gear in the footer (or `Ctrl+,`) turns the popup into a small settings
+page: the shortcut (click it and press a new one), start with Windows / open at
+login, theme, pause capturing, what gets captured (images, text in images,
+files, macOS screenshots, password-manager copies), how many clips to keep, and
+clear history. Changes apply at once and are written to `config.json`. `↑` `↓`
+move between rows, `Space` toggles, `Esc` goes back.
 
 ### macOS screenshots
 
@@ -162,6 +172,7 @@ clip you pick, and you press `⌘V` yourself.
 }
 ```
 
+Most of it can be changed on the settings page; the size limits only here.
 Edits apply as soon as you save the file, no restart needed. If the file or
 the hotkey is invalid, the previous settings stay active.
 

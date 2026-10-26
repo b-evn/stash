@@ -8,6 +8,7 @@ mod platform;
 use std::{
     collections::VecDeque,
     io,
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicI64, Ordering},
         mpsc::{channel, Sender},
@@ -22,7 +23,7 @@ use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Position, Size,
-    State, WebviewWindow, WindowEvent,
+    State, WebviewWindow, WindowEvent, Wry,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -67,6 +68,9 @@ struct AppState {
     stack: Mutex<Stack>,
     pasted: Sender<()>,
     db: Arc<Db>,
+    cfg: Arc<RwLock<config::Config>>,
+    config_dir: PathBuf,
+    paused: Arc<AtomicBool>,
     quiet_until: Arc<AtomicI64>,
     target: Mutex<isize>,
     placement: Mutex<Option<Placement>>,
@@ -97,18 +101,39 @@ fn screen_size(w: i32, h: i32) -> Size {
     if POINTS { LogicalSize::new(w, h).into() } else { PhysicalSize::new(w as u32, h as u32).into() }
 }
 
+// The tray's check items, kept so the settings page can flip them too.
+struct TrayChecks {
+    pause: CheckMenuItem<Wry>,
+    autostart: CheckMenuItem<Wry>,
+}
+
 fn toggle_popup(app: &AppHandle, from_tray: bool) {
     let Some(w) = popup(app) else { return };
     if w.is_visible().unwrap_or(false) {
         hide_popup(app);
         return;
     }
+    show_popup(app, &w, from_tray, "list");
+}
+
+fn show_settings(app: &AppHandle) {
+    let Some(w) = popup(app) else { return };
+    if w.is_visible().unwrap_or(false) {
+        let _ = app.emit("stash-view", "settings");
+        let _ = w.set_focus();
+    } else {
+        show_popup(app, &w, true, "settings");
+    }
+}
+
+// `view` tells the popup what to open on: "list" or "settings".
+fn show_popup(app: &AppHandle, w: &WebviewWindow, from_tray: bool, view: &str) {
     let st = app.state::<AppState>();
 
     let target = if from_tray { 0 } else { platform::foreground() };
     *st.target.lock().unwrap() = target;
 
-    let scale = screen_scale(&w);
+    let scale = screen_scale(w);
     let px = |v: f64| (v * scale).round() as i32;
     let (cx, top, bottom) = platform::caret_or_cursor();
     let work = platform::work_area(cx, top);
@@ -125,10 +150,10 @@ fn toggle_popup(app: &AppHandle, from_tray: bool) {
     let _ = w.set_size(screen_size(width, height));
     let _ = w.set_position(screen_pos(x, y));
     *st.shown_at.lock().unwrap() = Instant::now();
-    let _ = app.emit("stash-show", ());
+    let _ = app.emit("stash-show", view);
     let _ = w.show();
     let _ = w.set_focus();
-    platform::focus_popup(&w);
+    platform::focus_popup(w);
 }
 
 fn y_for(p: &Placement, height: i32) -> i32 {
@@ -378,17 +403,81 @@ fn hide_window(app: AppHandle) {
     hide_popup(&app);
 }
 
+// Returns whether the popup sits above the caret, so the page knows which edge stays put while it grows.
 #[tauri::command]
-fn fit_window(app: AppHandle, state: State<AppState>, height: f64) {
-    let Some(w) = popup(&app) else { return };
+fn fit_window(app: AppHandle, state: State<AppState>, height: f64) -> bool {
+    let Some(w) = popup(&app) else { return false };
     let scale = screen_scale(&w);
     let h = height.clamp(MIN_H, MAX_H) + 2.0 * MARGIN;
     let height_px = (h * scale).round() as i32;
     *state.height_px.lock().unwrap() = height_px;
     let _ = w.set_size(LogicalSize::new(CARD_W + 2.0 * MARGIN, h));
-    if let Some(p) = state.placement.lock().unwrap().as_ref() {
-        let _ = w.set_position(screen_pos(p.x, y_for(p, height_px)));
+    match state.placement.lock().unwrap().as_ref() {
+        Some(p) => {
+            let _ = w.set_position(screen_pos(p.x, y_for(p, height_px)));
+            p.above
+        }
+        None => false,
     }
+}
+
+#[derive(Serialize)]
+struct Settings {
+    config: config::Config,
+    autostart: bool,
+    paused: bool,
+    version: String,
+}
+
+#[tauri::command]
+fn get_settings(app: AppHandle, state: State<AppState>) -> Settings {
+    Settings {
+        config: state.cfg.read().unwrap_or_else(|e| e.into_inner()).clone(),
+        autostart: app.autolaunch().is_enabled().unwrap_or(false),
+        paused: state.paused.load(Ordering::Relaxed),
+        version: app.package_info().version.to_string(),
+    }
+}
+
+// Applies and saves the settings, and returns the ones in effect: a hotkey
+// that can't be registered leaves the old one in place.
+#[tauri::command]
+fn set_config(app: AppHandle, state: State<AppState>, config: config::Config) -> Result<config::Config, String> {
+    apply_config(&app, &state.cfg, config);
+    let live = state.cfg.read().unwrap_or_else(|e| e.into_inner()).clone();
+    config::save(&state.config_dir, &live).map_err(|e| e.to_string())?;
+    Ok(live)
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, on: bool) -> bool {
+    let mgr = app.autolaunch();
+    if let Err(e) = if on { mgr.enable() } else { mgr.disable() } {
+        eprintln!("stash: could not change autostart: {e}");
+    }
+    let now = mgr.is_enabled().unwrap_or(false);
+    if let Some(tray) = app.try_state::<TrayChecks>() {
+        let _ = tray.autostart.set_checked(now);
+    }
+    now
+}
+
+#[tauri::command]
+fn set_paused(app: AppHandle, state: State<AppState>, on: bool) {
+    state.paused.store(on, Ordering::Relaxed);
+    if let Some(tray) = app.try_state::<TrayChecks>() {
+        let _ = tray.pause.set_checked(on);
+    }
+}
+
+#[tauri::command]
+fn clear_history(state: State<AppState>) -> Result<(), String> {
+    state.db.clear_unpinned().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn reveal_config(state: State<AppState>) {
+    platform::reveal(&state.config_dir.join(config::FILE_NAME).to_string_lossy());
 }
 
 struct Watcher {
@@ -493,9 +582,11 @@ fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>) -> tauri::
     let autostart_label = if cfg!(target_os = "macos") { "Open at login" } else { "Start with Windows" };
     let autostart = CheckMenuItem::with_id(app, "autostart", autostart_label, true, autostart_on, None::<&str>)?;
     let clear = MenuItem::with_id(app, "clear", "Clear history (keeps pinned)", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&open, &pause, &autostart, &clear, &sep, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &pause, &autostart, &clear, &sep, &settings, &quit])?;
+    app.manage(TrayChecks { pause: pause.clone(), autostart: autostart.clone() });
 
     let mut tray = TrayIconBuilder::new()
         .tooltip("stash")
@@ -511,6 +602,7 @@ fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>) -> tauri::
             "clear" => {
                 let _ = db.clear_unpinned();
             }
+            "settings" => show_settings(app),
             "quit" => app.exit(0),
             _ => {}
         })
@@ -562,7 +654,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, fit_window, toggle_stack,
             paste_stack, cancel_stack, get_stack, reveal_in_explorer, open_url, copy_text, copy_fence, visual_source,
-            save_thumb
+            save_thumb, get_settings,
+            set_config, set_autostart, set_paused, clear_history, reveal_config
         ])
         .on_window_event(|window, event| match event {
             WindowEvent::Focused(false) => {
@@ -597,6 +690,9 @@ pub fn run() {
                 stack: Mutex::new(Stack::default()),
                 pasted,
                 db: db.clone(),
+                cfg: cfg.clone(),
+                config_dir: dir.clone(),
+                paused: paused.clone(),
                 quiet_until: quiet_until.clone(),
                 target: Mutex::new(0),
                 placement: Mutex::new(None),
