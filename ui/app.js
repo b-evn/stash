@@ -365,9 +365,10 @@
   // stored. A font's thumbnail is "Aa" set in it.
   const THUMB_MAX = 160;
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const VISUAL_EXT = /\.(svg|png|jpe?g|gif|webp|bmp|ico|avif|hei[cf]|ttf|otf|woff2?)$/i;
+  // TIFF and HEIC only on macOS, whose WebKit draws them; Windows' WebView2 can't.
+  const VISUAL_EXT = new RegExp(`\\.(svg|png|jpe?g|gif|webp|bmp|ico|avif|ttf|otf|woff2?${MAC ? '|tiff?|hei[cf]' : ''})$`, 'i');
   const FONT_EXT = /\.(ttf|otf|woff2?)$/i;
-  const MIME = { svg: 'image/svg+xml', jpg: 'image/jpeg', ico: 'image/x-icon', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
+  const MIME = { svg: 'image/svg+xml', jpg: 'image/jpeg', tif: 'image/tiff', ico: 'image/x-icon', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
   const FONT_SAMPLE = 'Aa';
   const SVG_START = /^\s*(?:<\?[\s\S]*?\?>\s*|<!--[\s\S]*?-->\s*|<![^>]*>\s*)*<svg[\s>]/i;
   const isSvg = (c) => c.kind !== 'image' && c.kind !== 'file' && SVG_START.test(c.text);

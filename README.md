@@ -104,8 +104,8 @@ was copied. It also works on text recognized in screenshots.
 
 ### Image files, fonts and SVG
 
-Copied image files (SVG, PNG, JPEG, GIF, WebP, BMP, ICO, AVIF, and HEIC on
-macOS) and copied SVG markup, as Figma and icon sites put it on the clipboard,
+Copied image files (SVG, PNG, JPEG, GIF, WebP, BMP, ICO, AVIF, and on macOS
+also TIFF and HEIC) and copied SVG markup, as Figma and icon sites put it on the clipboard,
 show a thumbnail instead of a file or code icon, with their size in pixels.
 Hold `Shift` over the row for a larger preview. Transparent artwork sits on a
 checkerboard, so black icons stay visible in dark mode. Font files (TTF, OTF,

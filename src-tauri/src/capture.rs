@@ -5,8 +5,9 @@ const THUMB_MAX: u32 = 160;
 /// Largest file stash reads to draw a thumbnail of it.
 const MAX_VISUAL_BYTES: u64 = 20 * 1024 * 1024;
 /// File types the webview can draw, so they get a thumbnail (fonts as a sample).
-const VISUAL_EXTS: &[&str] =
-    &["svg", "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif", "heic", "heif", "ttf", "otf", "woff", "woff2"];
+const VISUAL_EXTS: &[&str] = &["svg", "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif", "ttf", "otf", "woff", "woff2"];
+/// Types only WebKit draws, so only macOS gets thumbnails of them.
+const WEBKIT_EXTS: &[&str] = &["tif", "tiff", "heic", "heif"];
 
 pub struct Limits {
     pub max_chars: usize,
@@ -81,7 +82,8 @@ fn is_visual_path(path: &str) -> bool {
     std::path::Path::new(path.trim())
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| VISUAL_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+        .map(|e| e.to_ascii_lowercase())
+        .is_some_and(|e| VISUAL_EXTS.contains(&e.as_str()) || (cfg!(target_os = "macos") && WEBKIT_EXTS.contains(&e.as_str())))
 }
 
 /// Whether text is a whole SVG document, as design tools and icon sites copy it.
@@ -315,6 +317,8 @@ mod tests {
         assert_eq!(visual_source("file", &txt.display().to_string()), None);
         assert!(is_visual_path("/fonts/Inter.WOFF2") && is_visual_path("C:\\Fonts\\a.otf"));
         assert!(!is_visual_path("/fonts/fonts.ttc"));
+        assert_eq!(is_visual_path("/scans/page.TIFF"), cfg!(target_os = "macos"));
+        assert_eq!(is_visual_path("/photos/IMG_1.heic"), cfg!(target_os = "macos"));
         // The same image, copied as a path instead of as a file.
         assert_eq!(visual_source("path", &png.display().to_string()), Some(b"png bytes".to_vec()));
         assert_eq!(visual_source("text", &format!("\"{}\"\n", png.display())), Some(b"png bytes".to_vec()));
