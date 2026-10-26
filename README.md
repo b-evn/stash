@@ -16,8 +16,8 @@ which is `Ctrl+Option+V` (`⌃⌥V`) on both systems.
 <img src="docs/stack-dark.png" align="right" width="300" alt="paste stack">
 
 Collect clips in the order you need them, then paste them one after another
-with plain `Ctrl+V`, in any app. Made for forms: email, Tab, Ctrl+V, IBAN,
-Tab, Ctrl+V…
+with plain `Ctrl+V` (`⌘V` on macOS), in any app. Made for forms: email, Tab,
+Ctrl+V, IBAN, Tab, Ctrl+V…
 
 1. In the popup, `Shift+Enter` (or the row's stack button) adds a clip. It
    gets a number, and the footer becomes the stack bar. Clip 1 goes straight
@@ -28,8 +28,13 @@ Tab, Ctrl+V…
 3. It ends after the last clip, when you copy something yourself, or with the
    × in the stack bar (open the popup to see what's next).
 
-stash never intercepts `Ctrl+V`: while a stack runs it only notices that you
-pasted and then puts the next clip on the clipboard.
+How it works: the stack lives in the stash process, not the popup, so it
+keeps running with the popup closed. stash never intercepts or delays your
+paste. While a stack runs it watches the keyboard (a low-level keyboard hook on
+Windows, an event tap on macOS), and when you let go of V after a `Ctrl+V` /
+`⌘V` it puts the next clip on the clipboard. Pastes stash sends itself are
+tagged and skipped, and the watcher stops as soon as the stack ends. On macOS
+this needs Accessibility access (see below).
 
 <br clear="right">
 
