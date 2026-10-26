@@ -102,7 +102,9 @@ Just enough stays visible to tell what the clip is and which one:
 This only changes how the list shows them; pasting gives you the clip as it
 was copied. It also works on text recognized in screenshots.
 
-### Image files, fonts and SVG
+### Previews
+
+<p align="center"><img src="docs/previews.png" width="660" alt="file thumbnails and a font sample (dark), a code language badge, SVG markup and a blurred key (light)"></p>
 
 Copied image files (SVG, PNG, JPEG, GIF, WebP, BMP, ICO, AVIF, and on macOS
 also TIFF and HEIC) and copied SVG markup, as Figma and icon sites put it on the clipboard,
@@ -127,6 +129,8 @@ CSS gradients (`linear-gradient(…)`, `radial-…`, `conic-…`, also as a
 `background:` line) get a swatch, like colours do, and a clip of only emoji
 shows its first emoji large in place of the icon.
 
+### Pins, actions and menus
+
 The pin button next to the tabs shows pinned clips only. Hover a row for its
 quick actions: open a link in your browser, show a file in Explorer or Finder, copy code
 as a fenced block, copy a colour as HEX, RGB or HSL, pin or delete.
@@ -137,6 +141,8 @@ capturing, start with Windows / open at login, clear history (keeps pinned),
 settings, quit.
 
 ### Settings
+
+<p align="center"><img src="docs/settings.png" width="660" alt="the settings page, dark and light"></p>
 
 The gear in the footer (or `Ctrl+,`) turns the popup into a small settings
 page: the shortcut (click it and press a new one), start with Windows / open at
@@ -218,8 +224,23 @@ Actions (artifacts `stash-windows` and `stash-macos`), so you don't need a
 local toolchain.
 
 Tests: `node ui/search.test.js`, `node ui/secrets.test.js` and `cd src-tauri && cargo test --lib`.
-`ui/index.html` also opens in a plain browser with demo data for UI work;
-`docs/showcase.html`, `docs/in-use.html` and `docs/stack.html` are the scenes for the screenshots.
+`ui/index.html` also opens in a plain browser with demo data for UI work.
+
+The screenshots come from the scenes in `docs/` (`in-use`, `stack`,
+`showcase`, `previews`, `settings`), which show the popup with that demo data.
+Serve the repository over http (the settings scene scrolls its right popup,
+which a `file://` page isn't allowed to do) and render each one with headless
+Chrome at 3×, at the size its `body` sets:
+
+```sh
+python3 -m http.server 8000 &
+chrome --headless=new --hide-scrollbars --force-device-scale-factor=3 \
+  --window-size=824,540 --virtual-time-budget=12000 \
+  --screenshot=docs/settings.png http://localhost:8000/docs/settings.html
+```
+
+`in-use.html` takes `?theme=light` and `stack.html` `?theme=dark`. If a
+thumbnail is missing in a shot, render it again; they are drawn after the list.
 
 ## Known limits
 
@@ -243,4 +264,4 @@ Tests: `node ui/search.test.js`, `node ui/secrets.test.js` and `cd src-tauri && 
   has not been run on a real Windows desktop yet, so expect to tweak placement
   and focus behaviour.
 
-UI font: [Geist](https://github.com/vercel/geist-font) (SIL OFL, `ui/fonts`). Icons: [Lucide](https://lucide.dev) (ISC).
+UI font: [Geist](https://github.com/vercel/geist-font) (SIL OFL, `ui/fonts`). Icons: [Lucide](https://lucide.dev) (ISC), except the theme sun and moon, which are drawn for stash.
