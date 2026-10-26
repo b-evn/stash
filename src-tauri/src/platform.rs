@@ -6,9 +6,14 @@ pub struct Rect {
     pub bottom: i32,
 }
 
+// Screen coordinates are physical pixels on Windows and points on macOS (see `lib.rs`).
+// A target is the window (Windows) or process id (macOS) that had focus when the popup opened.
+
 #[cfg(windows)]
 pub use win::*;
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub use mac::*;
+#[cfg(not(any(windows, target_os = "macos")))]
 pub use other::*;
 
 #[cfg(windows)]
@@ -80,7 +85,17 @@ mod win {
         }
     }
 
-    pub fn force_foreground(raw: isize) {
+    pub fn request_access() {}
+    pub fn prepare_popup(_w: &tauri::WebviewWindow) {}
+    pub fn release_focus(_w: &tauri::WebviewWindow) {}
+
+    pub fn focus_popup(w: &tauri::WebviewWindow) {
+        if let Ok(h) = w.hwnd() {
+            force_foreground(h.0 as isize);
+        }
+    }
+
+    fn force_foreground(raw: isize) {
         unsafe {
             let target = hwnd(raw);
             let current = GetCurrentThreadId();
@@ -240,7 +255,362 @@ mod win {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+mod mac {
+    use super::Rect;
+    use objc2::{rc::autoreleasepool, MainThreadMarker};
+    use objc2_app_kit::{
+        NSApplication, NSApplicationActivationOptions, NSPasteboard, NSPopUpMenuWindowLevel, NSRunningApplication,
+        NSScreen, NSWindow, NSWindowCollectionBehavior, NSWorkspace,
+    };
+    use objc2_application_services::{
+        kAXTrustedCheckOptionPrompt, AXError, AXIsProcessTrusted, AXIsProcessTrustedWithOptions, AXUIElement, AXValue,
+        AXValueType,
+    };
+    use objc2_core_foundation::{
+        kCFBooleanTrue, kCFRunLoopDefaultMode, CFDictionary, CFMachPort, CFRange, CFRetained, CFRunLoop, CFString,
+        CFType, CGRect,
+    };
+    use objc2_core_graphics::{
+        CGEvent, CGEventField, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventTapLocation,
+        CGEventTapOptions, CGEventTapPlacement, CGEventTapProxy, CGEventType,
+    };
+    use objc2_foundation::{NSArray, NSString, NSURL};
+    use std::{
+        cell::Cell,
+        ffi::c_void,
+        ptr::{self, NonNull},
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc::Sender,
+            Arc,
+        },
+        thread::sleep,
+        time::Duration,
+    };
+
+    // kVK_ANSI_V: the V key on US, German, French and most other layouts.
+    const KEY_V: u16 = 9;
+    // Tags the key events stash posts, so the paste watcher can skip them.
+    const OWN_EVENT: i64 = 0x5354_4153;
+
+    fn trusted() -> bool {
+        unsafe { AXIsProcessTrusted() }
+    }
+
+    // Pasting, the caret position and the paste stack need Accessibility access.
+    // Shows the system prompt the first time, then does nothing.
+    pub fn request_access() {
+        if trusted() {
+            return;
+        }
+        let Some(yes) = (unsafe { kCFBooleanTrue }) else { return };
+        let opts = CFDictionary::<CFString, CFType>::from_slices(&[unsafe { kAXTrustedCheckOptionPrompt }], &[yes]);
+        unsafe { AXIsProcessTrustedWithOptions(Some(opts.as_opaque())) };
+    }
+
+    pub fn foreground() -> isize {
+        let me = std::process::id() as i32;
+        NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .map(|a| a.processIdentifier())
+            .filter(|&pid| pid != me)
+            .unwrap_or(0) as isize
+    }
+
+    fn ax_copy(el: &AXUIElement, attr: &str, param: Option<&CFType>) -> Option<CFRetained<CFType>> {
+        let name = CFString::from_str(attr);
+        let mut out: *const CFType = ptr::null();
+        let err = unsafe {
+            match param {
+                Some(p) => el.copy_parameterized_attribute_value(&name, p, NonNull::from(&mut out)),
+                None => el.copy_attribute_value(&name, NonNull::from(&mut out)),
+            }
+        };
+        let out = NonNull::new(out as *mut CFType)?;
+        let out = unsafe { CFRetained::from_raw(out) };
+        (err == AXError::Success).then_some(out)
+    }
+
+    fn bounds_for(el: &AXUIElement, location: isize, length: isize) -> Option<CGRect> {
+        let mut range = CFRange { location, length };
+        let param = unsafe { AXValue::new(AXValueType::CFRange, NonNull::from(&mut range).cast()) }?;
+        let value = ax_copy(el, "AXBoundsForRange", Some(&param))?;
+        let mut rect = CGRect::default();
+        let ok = unsafe { value.downcast_ref::<AXValue>()?.value(AXValueType::CGRect, NonNull::from(&mut rect).cast()) };
+        let sane = rect.size.height > 0.0 && rect.size.height < 400.0 && (rect.origin.x, rect.origin.y) != (0.0, 0.0);
+        (ok && sane).then_some(rect)
+    }
+
+    // The text caret of the focused app through the Accessibility API, in global top-left points.
+    fn caret() -> Option<(f64, f64, f64)> {
+        if !trusted() {
+            return None;
+        }
+        let system = unsafe { AXUIElement::new_system_wide() };
+        unsafe { system.set_messaging_timeout(0.25) };
+        let focused = ax_copy(&system, "AXFocusedUIElement", None)?;
+        let focused = focused.downcast_ref::<AXUIElement>()?;
+        let selection = ax_copy(focused, "AXSelectedTextRange", None)?;
+        let mut range = CFRange { location: 0, length: 0 };
+        let ok = unsafe {
+            selection.downcast_ref::<AXValue>()?.value(AXValueType::CFRange, NonNull::from(&mut range).cast())
+        };
+        if !ok {
+            return None;
+        }
+        if let Some(r) = bounds_for(focused, range.location, 0) {
+            return Some((r.origin.x, r.origin.y, r.origin.y + r.size.height));
+        }
+        // Some apps only report bounds for real characters: use the right edge of the previous one.
+        let r = bounds_for(focused, range.location.checked_sub(1)?, 1)?;
+        Some((r.origin.x + r.size.width, r.origin.y, r.origin.y + r.size.height))
+    }
+
+    pub fn caret_or_cursor() -> (i32, i32, i32) {
+        if let Some((x, top, bottom)) = caret() {
+            return (x as i32, top as i32, bottom.max(top + 16.0) as i32);
+        }
+        let p = CGEvent::new(None).map(|e| CGEvent::location(Some(&e))).unwrap_or_default();
+        (p.x as i32, p.y as i32, p.y as i32 + 20)
+    }
+
+    pub fn work_area(x: i32, y: i32) -> Rect {
+        let fallback = Rect { left: 0, top: 0, right: 1440, bottom: 900 };
+        let Some(mtm) = MainThreadMarker::new() else { return fallback };
+        let screens = NSScreen::screens(mtm);
+        let Some(primary) = screens.firstObject() else { return fallback };
+        // Cocoa puts the origin at the bottom-left of the primary screen, y going up.
+        let flip = primary.frame().size.height;
+        let (px, py) = (x as f64, flip - y as f64);
+        let screen = screens
+            .iter()
+            .find(|s| {
+                let f = s.frame();
+                px >= f.origin.x && px < f.origin.x + f.size.width && py > f.origin.y && py <= f.origin.y + f.size.height
+            })
+            .unwrap_or(primary);
+        let v = screen.visibleFrame();
+        Rect {
+            left: v.origin.x as i32,
+            top: (flip - v.origin.y - v.size.height) as i32,
+            right: (v.origin.x + v.size.width) as i32,
+            bottom: (flip - v.origin.y) as i32,
+        }
+    }
+
+    fn ns_window(w: &tauri::WebviewWindow) -> Option<&NSWindow> {
+        MainThreadMarker::new()?;
+        let ptr = w.ns_window().ok()? as *const NSWindow;
+        unsafe { ptr.as_ref() }
+    }
+
+    // Float above full-screen apps and follow the user across Spaces.
+    pub fn prepare_popup(w: &tauri::WebviewWindow) {
+        let Some(win) = ns_window(w) else { return };
+        win.setLevel(NSPopUpMenuWindowLevel);
+        win.setCollectionBehavior(
+            NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::FullScreenAuxiliary
+                | NSWindowCollectionBehavior::IgnoresCycle,
+        );
+    }
+
+    pub fn focus_popup(_w: &tauri::WebviewWindow) {
+        let Some(mtm) = MainThreadMarker::new() else { return };
+        let app = NSApplication::sharedApplication(mtm);
+        app.unhideWithoutActivation();
+        #[allow(deprecated)]
+        app.activateIgnoringOtherApps(true);
+    }
+
+    // Hiding the window alone would leave stash active with nothing to type into;
+    // hiding the app hands focus back to the app the user came from.
+    pub fn release_focus(w: &tauri::WebviewWindow) {
+        let Some(win) = ns_window(w) else {
+            let w2 = w.clone();
+            let _ = w.run_on_main_thread(move || release_focus(&w2));
+            return;
+        };
+        win.orderOut(None);
+        if let Some(mtm) = MainThreadMarker::new() {
+            NSApplication::sharedApplication(mtm).hide(None);
+        }
+    }
+
+    fn post_paste() {
+        let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState);
+        for down in [true, false] {
+            let Some(e) = CGEvent::new_keyboard_event(source.as_deref(), KEY_V, down) else { return };
+            CGEvent::set_flags(Some(&e), CGEventFlags::MaskCommand);
+            CGEvent::set_integer_value_field(Some(&e), CGEventField::EventSourceUserData, OWN_EVENT);
+            CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&e));
+        }
+    }
+
+    pub fn paste_into(target: isize) {
+        if target <= 0 {
+            return;
+        }
+        if !trusted() {
+            request_access();
+            return;
+        }
+        let pid = target as i32;
+        let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) else { return };
+        if app.isTerminated() {
+            return;
+        }
+        if !app.isActive() {
+            app.activateWithOptions(NSApplicationActivationOptions::empty());
+        }
+        let front = || NSWorkspace::sharedWorkspace().frontmostApplication().map(|a| a.processIdentifier());
+        for _ in 0..50 {
+            if front() == Some(pid) {
+                break;
+            }
+            sleep(Duration::from_millis(10));
+        }
+        sleep(Duration::from_millis(40));
+        post_paste();
+    }
+
+    struct Tap {
+        tx: Sender<()>,
+        armed: Cell<bool>,
+        port: Cell<*const CFMachPort>,
+    }
+
+    // Cmd+V down arms, V up fires: the app has read the clipboard by then.
+    unsafe extern "C-unwind" fn on_key(
+        _proxy: CGEventTapProxy,
+        kind: CGEventType,
+        event: NonNull<CGEvent>,
+        info: *mut c_void,
+    ) -> *mut CGEvent {
+        let tap = unsafe { &*(info as *const Tap) };
+        let e = Some(unsafe { event.as_ref() });
+        if kind == CGEventType::TapDisabledByTimeout || kind == CGEventType::TapDisabledByUserInput {
+            if let Some(port) = unsafe { tap.port.get().as_ref() } {
+                CGEvent::tap_enable(port, true);
+            }
+        } else if CGEvent::integer_value_field(e, CGEventField::KeyboardEventKeycode) == KEY_V as i64
+            && CGEvent::integer_value_field(e, CGEventField::EventSourceUserData) != OWN_EVENT
+        {
+            if kind == CGEventType::KeyDown {
+                let flags = CGEvent::flags(e);
+                tap.armed.set(
+                    flags.contains(CGEventFlags::MaskCommand)
+                        && !flags.intersects(CGEventFlags::MaskAlternate | CGEventFlags::MaskControl),
+                );
+            } else if kind == CGEventType::KeyUp && tap.armed.replace(false) {
+                let _ = tap.tx.send(());
+            }
+        }
+        event.as_ptr()
+    }
+
+    pub struct PasteWatch {
+        stop: Arc<AtomicBool>,
+    }
+
+    pub fn watch_pastes(tx: Sender<()>) -> PasteWatch {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopped = stop.clone();
+        std::thread::spawn(move || {
+            let tap = Tap { tx, armed: Cell::new(false), port: Cell::new(ptr::null()) };
+            let mask = (1u64 << CGEventType::KeyDown.0) | (1u64 << CGEventType::KeyUp.0);
+            let port = unsafe {
+                CGEvent::tap_create(
+                    CGEventTapLocation::SessionEventTap,
+                    CGEventTapPlacement::HeadInsertEventTap,
+                    CGEventTapOptions::Default,
+                    mask,
+                    Some(on_key),
+                    &tap as *const Tap as *mut c_void,
+                )
+            };
+            let Some(port) = port else {
+                eprintln!("stash: can't watch for pastes, allow stash under Privacy & Security > Accessibility");
+                request_access();
+                return;
+            };
+            tap.port.set(&*port);
+            let (Some(source), Some(run_loop)) = (CFMachPort::new_run_loop_source(None, Some(&port), 0), CFRunLoop::current())
+            else {
+                return;
+            };
+            let mode = unsafe { kCFRunLoopDefaultMode };
+            run_loop.add_source(Some(&source), mode);
+            CGEvent::tap_enable(&port, true);
+            while !stopped.load(Ordering::Relaxed) {
+                CFRunLoop::run_in_mode(mode, 0.5, false);
+            }
+            CGEvent::tap_enable(&port, false);
+            port.invalidate();
+        });
+        PasteWatch { stop }
+    }
+
+    impl Drop for PasteWatch {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::Relaxed);
+        }
+    }
+
+    // Password managers mark secrets with these types (nspasteboard.org).
+    pub fn clipboard_is_sensitive() -> bool {
+        const MARKERS: [&str; 5] = [
+            "org.nspasteboard.ConcealedType",
+            "org.nspasteboard.TransientType",
+            "org.nspasteboard.AutoGeneratedType",
+            "com.agilebits.onepassword",
+            "de.petermaurer.TransientPasteboardType",
+        ];
+        autoreleasepool(|_| {
+            NSPasteboard::generalPasteboard()
+                .types()
+                .is_some_and(|types| types.iter().any(|t| MARKERS.contains(&t.to_string().as_str())))
+        })
+    }
+
+    fn expand_home(path: &str) -> String {
+        match (path.strip_prefix("~/"), std::env::var("HOME")) {
+            (Some(rest), Ok(home)) => format!("{home}/{rest}"),
+            _ => path.to_string(),
+        }
+    }
+
+    pub fn reveal(path: &str) {
+        let path = expand_home(path.trim());
+        if path.is_empty() {
+            return;
+        }
+        autoreleasepool(|_| {
+            let url = NSURL::fileURLWithPath(&NSString::from_str(&path));
+            let ws = NSWorkspace::sharedWorkspace();
+            if std::path::Path::new(&path).is_dir() {
+                ws.openURL(&url);
+            } else {
+                ws.activateFileViewerSelectingURLs(&NSArray::from_retained_slice(&[url]));
+            }
+        });
+    }
+
+    pub fn open(target: &str) {
+        let target = target.trim();
+        if target.is_empty() {
+            return;
+        }
+        autoreleasepool(|_| {
+            if let Some(url) = NSURL::URLWithString(&NSString::from_str(target)) {
+                NSWorkspace::sharedWorkspace().openURL(&url);
+            }
+        });
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 mod other {
     use super::Rect;
 
@@ -253,7 +623,10 @@ mod other {
     pub fn work_area(_x: i32, _y: i32) -> Rect {
         Rect { left: 0, top: 0, right: 1920, bottom: 1040 }
     }
-    pub fn force_foreground(_raw: isize) {}
+    pub fn request_access() {}
+    pub fn prepare_popup(_w: &tauri::WebviewWindow) {}
+    pub fn focus_popup(_w: &tauri::WebviewWindow) {}
+    pub fn release_focus(_w: &tauri::WebviewWindow) {}
     pub fn paste_into(_target: isize) {}
     pub fn clipboard_is_sensitive() -> bool {
         false
@@ -270,8 +643,7 @@ mod other {
         if target.is_empty() {
             return;
         }
-        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-        let _ = std::process::Command::new(opener).arg(target).spawn();
+        let _ = std::process::Command::new("xdg-open").arg(target).spawn();
     }
 
     pub struct PasteWatch;

@@ -1,4 +1,4 @@
-// Image text recognition through the OCR engine built into Windows 10/11.
+// Image text recognition through the OCR engine built into Windows 10/11 or macOS.
 // Everything runs locally; no image ever leaves the machine.
 
 #[cfg(windows)]
@@ -47,7 +47,71 @@ pub fn run(width: u32, height: u32, rgba: &[u8]) -> Option<String> {
             .ok()?;
     let engine = OcrEngine::TryCreateFromUserProfileLanguages().ok()?;
     let result = engine.RecognizeAsync(&bitmap).ok()?.get().ok()?;
-    let text = result.Text().ok()?.to_string();
+    tidy(&result.Text().ok()?.to_string())
+}
+
+// The same through the Vision framework on macOS.
+#[cfg(target_os = "macos")]
+pub fn run(width: u32, height: u32, rgba: &[u8]) -> Option<String> {
+    use objc2::{rc::autoreleasepool, sel, AnyThread};
+    use objc2_core_foundation::CFData;
+    use objc2_core_graphics::{
+        CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGDataProvider, CGImage, CGImageAlphaInfo,
+    };
+    use objc2_foundation::{NSArray, NSDictionary, NSObjectProtocol};
+    use objc2_vision::{VNImageRequestHandler, VNRecognizeTextRequest, VNRequest, VNRequestTextRecognitionLevel};
+
+    if width == 0 || height == 0 || rgba.is_empty() {
+        return None;
+    }
+    autoreleasepool(|_| {
+        let data = CFData::from_bytes(rgba);
+        let provider = CGDataProvider::with_cf_data(Some(&data))?;
+        let space = CGColorSpace::new_device_rgb()?;
+        let image = unsafe {
+            CGImage::new(
+                width as usize,
+                height as usize,
+                8,
+                32,
+                width as usize * 4,
+                Some(&space),
+                CGBitmapInfo(CGImageAlphaInfo::Last.0),
+                Some(&provider),
+                std::ptr::null(),
+                false,
+                CGColorRenderingIntent::RenderingIntentDefault,
+            )
+        }?;
+
+        let request = VNRecognizeTextRequest::new();
+        request.setRecognitionLevel(VNRequestTextRecognitionLevel::Accurate);
+        request.setUsesLanguageCorrection(true);
+        if request.respondsToSelector(sel!(setAutomaticallyDetectsLanguage:)) {
+            request.setAutomaticallyDetectsLanguage(true);
+        }
+        let handler = unsafe {
+            VNImageRequestHandler::initWithCGImage_options(VNImageRequestHandler::alloc(), &image, &NSDictionary::new())
+        };
+        let requests = NSArray::from_slice(&[&**request as &VNRequest]);
+        handler.performRequests_error(&requests).ok()?;
+        let lines: Vec<String> = request
+            .results()?
+            .iter()
+            .filter_map(|o| o.topCandidates(1).firstObject())
+            .map(|c| c.string().to_string())
+            .collect();
+        tidy(&lines.join("\n"))
+    })
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn run(_width: u32, _height: u32, _rgba: &[u8]) -> Option<String> {
+    None
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+fn tidy(text: &str) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return None;
@@ -57,9 +121,4 @@ pub fn run(width: u32, height: u32, rgba: &[u8]) -> Option<String> {
     } else {
         trimmed.to_string()
     })
-}
-
-#[cfg(not(windows))]
-pub fn run(_width: u32, _height: u32, _rgba: &[u8]) -> Option<String> {
-    None
 }
