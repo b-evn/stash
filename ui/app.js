@@ -58,6 +58,11 @@
     camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
     key: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
     history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+    // Keys drawn in menu keycaps.
+    command: '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>',
+    enter: '<path d="m9 10-5 5 5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>',
+    backspace: '<path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/>',
+    click: '<path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/>',
   };
   const svg = (name) => `<svg class="icon" viewBox="0 0 24 24">${ICON[name]}</svg>`;
 
@@ -689,7 +694,7 @@
   const clearSearchItem = () => ({
     icon: 'ban',
     label: 'Clear search',
-    hint: 'Esc',
+    keys: ['Esc'],
     action: () => { q.value = ''; chips = []; refresh(); q.focus(); },
   });
 
@@ -702,7 +707,7 @@
   const settingsItem = () => ({
     icon: 'settings',
     label: 'Settings',
-    hint: `${MOD},`,
+    keys: ['mod', ','],
     action: () => showView('prefs'),
   });
 
@@ -727,8 +732,8 @@
   function clipMenu(c) {
     const noun = { image: 'image', file: 'files', link: 'link', code: 'code', color: 'colour', text: 'text' }[c.kind];
     const items = [
-      { icon: 'clipboard', label: noun ? `Paste ${noun}` : 'Paste', hint: '↵', action: () => paste(c) },
-      { icon: 'copy', label: noun ? `Copy ${noun}` : 'Copy', hint: `${MOD}↵`, action: () => copyOnly(c) },
+      { icon: 'clipboard', label: noun ? `Paste ${noun}` : 'Paste', keys: ['enter'], action: () => paste(c) },
+      { icon: 'copy', label: noun ? `Copy ${noun}` : 'Copy', keys: ['mod', 'enter'], action: () => copyOnly(c) },
     ];
     let special = null;
     if (c.kind === 'link') {
@@ -757,10 +762,10 @@
     const inStack = stack.ids.includes(c.id);
     items.push(
       menuSep(),
-      { icon: inStack ? 'stackRemove' : 'stackAdd', label: inStack ? 'Remove from stack' : 'Add to stack', hint: `${MOD}click`, action: () => toggleStack(c) },
-      { icon: c.pinned ? 'pinOff' : 'pin', label: c.pinned ? 'Unpin' : 'Pin', hint: `${MOD}P`, action: () => pin(c) },
+      { icon: inStack ? 'stackRemove' : 'stackAdd', label: inStack ? 'Remove from stack' : 'Add to stack', keys: ['mod', 'click'], action: () => toggleStack(c) },
+      { icon: c.pinned ? 'pinOff' : 'pin', label: c.pinned ? 'Unpin' : 'Pin', keys: ['mod', 'P'], action: () => pin(c) },
       menuSep(),
-      { icon: 'trash', label: 'Delete', hint: MAC ? '⌘⌫' : 'Del', danger: true, action: () => remove(c) },
+      { icon: 'trash', label: 'Delete', keys: MAC ? ['mod', 'backspace'] : ['Del'], danger: true, action: () => remove(c) },
     );
     return items;
   }
@@ -789,7 +794,7 @@
 
   function stackMenu() {
     const lead = [];
-    if (stack.ids.length) lead.push({ icon: 'stack', label: 'Paste next', hint: '↵', action: pasteStack }, clearStackItem());
+    if (stack.ids.length) lead.push({ icon: 'stack', label: 'Paste next', keys: ['enter'], action: pasteStack }, clearStackItem());
     return appMenu({ lead, noClearStack: true });
   }
 
@@ -879,6 +884,15 @@
     if (focusFirst) setMenuActive(sub, 0);
   }
 
+  // A menu row's shortcut as outlined keycaps: ⌘, Return, Backspace and the
+  // click as icons, any other key (Ctrl on Windows too) by its name.
+  const KEY_ICON = { mod: MAC && 'command', enter: 'enter', backspace: 'backspace', click: 'click' };
+  function keycaps(keys) {
+    const caps = el('span', 'menu-keys');
+    for (const k of keys) caps.appendChild(KEY_ICON[k] ? el('kbd', `ico ${k}`, svg(KEY_ICON[k])) : el('kbd', null, k === 'mod' ? 'Ctrl' : k));
+    return caps;
+  }
+
   function menuPanel(items, level, parentEl) {
     const root = el('div', 'menu');
     root.dataset.level = String(level);
@@ -909,7 +923,8 @@
       const end = row.appendChild(el('span', 'menu-end'));
       if (item.checked) end.appendChild(el('span', 'menu-check', svg('check')));
       else if (item.children) end.appendChild(el('span', 'menu-chev', svg('chevron')));
-      if (item.hint) end.appendChild(el('span', 'menu-hint')).textContent = item.hint;
+      if (item.keys) end.appendChild(keycaps(item.keys));
+      else if (item.hint) end.appendChild(el('span', 'menu-hint')).textContent = item.hint;
 
       const index = panel.rows.length;
       panel.rows.push({ item, row });
