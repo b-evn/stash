@@ -233,6 +233,28 @@ footer { border-top: 1px solid var(--border); color: var(--muted-fg); font-size:
 .menu-label { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .menu-end { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; margin-left: auto; color: var(--muted-fg); }
 .menu-hint { flex: 0 4 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; letter-spacing: .01em; }
+/* Shortcut keycaps: outlined and dimmer than the label, brighter on the active row. */
+.menu-keys { display: flex; gap: 2px; flex: none; }
+.menu-keys kbd {
+  min-width: 17px; height: 17px; padding: 0 3px; border-radius: 4.5px;
+  border-color: var(--border); background: none; color: color-mix(in srgb, var(--muted-fg) 65%, var(--bg));
+  font-size: 10.5px; transition: border-color .1s, color .1s;
+}
+.menu-keys kbd.ico { padding: 0; }
+.menu-keys .icon { width: 11px; height: 11px; stroke-width: 2; }
+:is(.menu-item:hover, .menu-item.active, .menu-item.open) kbd {
+  border-color: color-mix(in srgb, var(--muted-fg) 25%, var(--border)); color: color-mix(in srgb, var(--fg) 75%, var(--bg));
+}
+/* Backspace is wide and short, so it's drawn larger (at the same stroke weight) to keep its × readable. */
+.menu-keys kbd.backspace .icon { width: 13px; height: 13px; stroke-width: 1.75; }
+/* Delete's keys take a muted red, as dim as the other keys at rest. */
+.menu-item.danger kbd {
+  border-color: color-mix(in srgb, var(--danger) 20%, var(--border));
+  color: color-mix(in srgb, var(--danger) 50%, color-mix(in srgb, var(--muted-fg) 65%, var(--bg)));
+}
+:is(.menu-item.danger:hover, .menu-item.danger.active) kbd {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); color: color-mix(in srgb, var(--danger) 80%, var(--fg));
+}
 .menu-check, .menu-chev { display: grid; place-items: center; width: 14px; height: 14px; color: var(--fg); }
 .menu-check .icon { width: 13px; height: 13px; stroke-width: 2.2; }
 .menu-chev { color: var(--muted-fg); }
