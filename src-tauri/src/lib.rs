@@ -654,7 +654,7 @@ fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>, saved: boo
     app.manage(TrayChecks { pause: pause.clone(), autostart: autostart.clone() });
 
     let mut tray = TrayIconBuilder::new()
-        .tooltip(if saved { "stash" } else { "stash: history isn't saved, no access to its key in the keychain" })
+        .tooltip(if saved { "stash" } else { "stash: history isn't being saved this time" })
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
@@ -749,7 +749,7 @@ pub fn run() {
             let (db, saved) = match vault::open(&dir, &vault::Keychain) {
                 Ok(db) => (db, true),
                 Err(e) => {
-                    eprintln!("stash: history is kept in memory only until quit, no access to its key: {e}");
+                    eprintln!("stash: history is kept in memory only until quit: {e}");
                     (Db::in_memory()?, false)
                 }
             };
