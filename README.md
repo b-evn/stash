@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.webp">
-  <img alt="stash: everything you copied, one keystroke away. The popup over a Baroque painting of the gods." src="docs/hero-dark.webp">
+  <img alt="stash: everything you copied, one keystroke away. In a reply over a Baroque painting of the gods, Ctrl+Option+V opens the popup at the caret, typing ghb finds a GitHub link, and Enter pastes it into the text." src="docs/hero-dark.webp">
 </picture>
 
 <p align="center">
@@ -27,55 +27,85 @@
 
 <br>
 
-## Everything goes in
-
+<a id="everything-goes-in"></a>
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/kinds-light.webp">
-  <img alt="Six kinds of clip: text, links, code, images, files and colours, each with its search filter." src="docs/kinds-dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="docs/title-1-light.webp">
+  <img alt="I. Everything goes in: text, links, code, images, files and colours." src="docs/title-1-dark.webp" width="100%">
 </picture>
 
-Text, links, code, images and files all go in, and
-everything stays on your computer, encrypted.
-Text keeps the formatting it was copied with, so bold, links and tables from a
-browser or Word paste back as they were; `Alt+Enter` pastes plain text.
-Text inside screenshots is recognized on your machine, so you can search
-those too.
+<table align="center">
+<tr>
+<td width="200" align="center"><img src="docs/icons/text.svg" width="44" height="44"><br><b>Text</b><br><sub>keeps its formatting</sub></td>
+<td width="200" align="center"><img src="docs/icons/link.svg" width="44" height="44"><br><b>Links</b><br><sub>open in your browser</sub></td>
+<td width="200" align="center"><img src="docs/icons/code.svg" width="44" height="44"><br><b>Code</b><br><sub>badged by language</sub></td>
+</tr>
+<tr>
+<td width="200" align="center"><img src="docs/icons/image.svg" width="44" height="44"><br><b>Images</b><br><sub>their text is searchable</sub></td>
+<td width="200" align="center"><img src="docs/icons/file.svg" width="44" height="44"><br><b>Files</b><br><sub>thumbnails and fonts</sub></td>
+<td width="200" align="center"><img src="docs/icons/color.svg" width="44" height="44"><br><b>Colours</b><br><sub>HEX, RGB or HSL</sub></td>
+</tr>
+</table>
 
-- **Previews** for what a row can't spell out: thumbnails for image files, SVG
-  markup and image data URLs, an "Aa" in the font for font files, swatches for
-  colours and CSS gradients, the language on code. Hold `Shift` to see an image
-  larger or long text in full.
-- **Quick actions** on hover: open a link, show a file in Explorer or Finder,
-  copy code as a fenced block, copy a colour as HEX, RGB or HSL. Right-click for
-  the same in a menu.
-- **macOS screenshots** (`⌘⇧3`, `⌘⇧4`, `⌘⇧5`) are still saved as files and land
-  in the history too, ready to paste.
+Everything stays on your computer, encrypted. Text pastes back with the
+formatting it was copied with; `Alt+Enter` pastes it plain. Text inside
+screenshots is recognized on your machine, so you can search those too.
 
-## Paste stack
+<img src="docs/icons/eye.svg" width="24" height="24" align="top">&nbsp;Hold `Shift` to see an image larger or long text in full. Rows preview
+what they can't spell out: image files, SVG markup, data URLs, fonts, colours and
+CSS gradients.
 
+<img src="docs/icons/bolt.svg" width="24" height="24" align="top">&nbsp;Hover a row for quick actions: open a link, show a file in Explorer or
+Finder, copy code as a fenced block or a colour as HEX, RGB or HSL. Right-click
+for the same in a menu.
+
+<img src="docs/icons/camera.svg" width="24" height="24" align="top">&nbsp;macOS screenshots (`⌘⇧3`, `⌘⇧4`, `⌘⇧5`) are still saved as files and
+land in the history too, ready to paste.
+
+<br>
+
+<a id="paste-stack"></a>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/title-2-light.webp">
+  <img alt="II. Paste stack: collect in order, paste with plain Ctrl+V." src="docs/title-2-dark.webp" width="100%">
+</picture>
+
+<p>
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/stack-light.webp">
   <img alt="A paste stack of four clips over a payment form: each Cmd+V pastes the next clip into the next field." src="docs/stack-dark.webp">
 </picture>
+</p>
 
 Made for forms. `Ctrl`-click clips in the order you need them, close the popup,
 and each plain `Ctrl+V` pastes the next one, in any app: email, Tab, `Ctrl+V`,
 IBAN, Tab, `Ctrl+V`…
 
-Stacked clips go in as plain text.
-The stack ends after its last clip, when you copy something
-yourself, or with the × in its bar. It never holds up your paste: it waits for
-you to let go of V, then puts the next clip on the clipboard.
+<img src="docs/icons/layers.svg" width="24" height="24" align="top">&nbsp;Stacked clips go in as plain text. The stack ends after its last clip,
+when you copy something yourself, or with the × in its bar.
 
-## Keys
+<img src="docs/icons/enter.svg" width="24" height="24" align="top">&nbsp;It never holds up your paste: it waits for you to let go of V, then puts
+the next clip on the clipboard.
 
+<br>
+
+<a id="keys"></a>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/title-3-light.webp">
+  <img alt="III. Keys: everything from the keyboard." src="docs/title-3-dark.webp" width="100%">
+</picture>
+
+<p>
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/keys-light.webp">
   <img alt="The main keys: Ctrl+Option+V opens, Enter pastes, Cmd+1 to 9 pastes a row, hold Shift to preview, Cmd-click stacks, Tab cycles kinds." src="docs/keys-dark.webp">
 </picture>
+</p>
 
 On macOS read `Ctrl` as `⌘` and `Alt` as `⌥`, except in the hotkey, which is
 `⌃⌥V` on both.
+
+<details>
+<summary>All keys</summary>
 
 | key | does |
 | --- | --- |
@@ -94,15 +124,25 @@ On macOS read `Ctrl` as `⌘` and `Alt` as `⌥`, except in the hotkey, which is
 | `Ctrl+,` | settings |
 | `Esc` | clear the search, then close |
 
-## Find anything
+</details>
 
+<br>
+
+<a id="find-anything"></a>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/title-4-light.webp">
+  <img alt="IV. Find anything: loose matching, filters as chips." src="docs/title-4-dark.webp" width="100%">
+</picture>
+
+<p>
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/panels-light.webp">
   <img alt="Three popups: filter chips for files without logo, a code clip previewed with Shift held, and the settings page." src="docs/panels-dark.webp">
 </picture>
+</p>
 
-Just type. Words match loosely (`ghb` finds *GitHub*), every word has to match,
-and a capital letter makes a word case-sensitive.
+<img src="docs/icons/search.svg" width="24" height="24" align="top">&nbsp;Just type. Words match loosely (`ghb` finds *GitHub*), every word has to
+match, and a capital letter makes a word case-sensitive.
 
 | type | to find |
 | --- | --- |
@@ -110,36 +150,51 @@ and a capital letter makes a word case-sensitive.
 | `@code` `@link` `@image` `@file` `@color` `@email` `@number` `@path` `@text` | one kind |
 | `@pin` · `@hour` `@today` `@week` | pinned · recent |
 
-Filters turn into chips as you type them. Combine freely: `@code !test fetch`.
+<img src="docs/icons/tab.svg" width="24" height="24" align="top">&nbsp;Filters turn into chips as you type them. Combine freely: `@code !test fetch`.
 
-The gear in the footer opens the settings. They start with what stash is doing:
-capturing or paused, how many clips, and whether they're encrypted on disk. Then
-the shortcut, start at login, theme, a tile for each kind of clip that gets
-captured, and how many clips to keep. They're saved to `config.json`, which you
-can also edit by hand; it applies as soon as you save.
+<img src="docs/icons/command.svg" width="24" height="24" align="top">&nbsp;The gear in the footer opens the settings: what stash is doing (capturing
+or paused, how many clips, whether they're encrypted), the shortcut, start at
+login, theme, which kinds get captured, and how many clips to keep. They're saved
+to `config.json`, which you can also edit by hand; it applies as soon as you save.
 
-## Private by default
+<br>
 
+<a id="private-by-default"></a>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/title-5-light.webp">
+  <img alt="V. Private by default: secrets blurred, history encrypted." src="docs/title-5-dark.webp" width="100%">
+</picture>
+
+<p>
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/secrets-light.webp">
   <img alt="Blurred secrets in the list, each row naming its kind: an IBAN, a Visa card, a GitHub token, a password revealed under the pointer, and a database URL." src="docs/secrets-dark.webp">
 </picture>
+</p>
 
-- **Secrets are blurred** in the list, so they stay hidden when you share your
-  screen: IBANs, card numbers, API tokens, passwords, private keys and URLs with
-  a password in them. Each row names what it holds, such as
-  *Visa card* or *GitHub token*; hover to read it. Pasting gives you the clip as it was copied.
-- **Encrypted on disk.** The history is a
-  [SQLCipher](https://www.zetetic.net/sqlcipher/) database (AES-256), and its
-  key lives in the macOS Keychain or Windows Credential Manager, never in a
-  file. Copies and backups of it are unreadable. It guards the history at rest,
-  not against software running as you.
-- **Password managers are respected.** Copies they mark as "exclude from
-  history" (1Password, KeePassXC…) are never stored.
-- **Nothing leaves your computer.** Text in images is recognized by the OCR
-  built into Windows and macOS. No account, no cloud.
+<img src="docs/icons/lock.svg" width="24" height="24" align="top">&nbsp;Secrets are blurred in the list, so they stay hidden when you share your
+screen: IBANs, card numbers, API tokens, passwords, private keys and URLs with a
+password in them. Each row names what it holds, such as *Visa card* or *GitHub
+token*; hover to read it. Pasting gives you the clip as it was copied.
 
-## Build
+<img src="docs/icons/shield.svg" width="24" height="24" align="top">&nbsp;The history is encrypted on disk: a [SQLCipher](https://www.zetetic.net/sqlcipher/)
+database (AES-256) whose key lives in the macOS Keychain or Windows Credential
+Manager, never in a file. Copies and backups of it are unreadable. It guards the
+history at rest, not against software running as you.
+
+<img src="docs/icons/key.svg" width="24" height="24" align="top">&nbsp;Password managers are respected. Copies they mark as "exclude from history"
+(1Password, KeePassXC…) are never stored.
+
+<img src="docs/icons/cloudoff.svg" width="24" height="24" align="top">&nbsp;Nothing leaves your computer. Text in images is recognized by the OCR built
+into Windows and macOS. No account, no cloud.
+
+<br>
+
+<a id="build"></a>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/title-6-light.webp">
+  <img alt="VI. Build: from source, on Windows or macOS." src="docs/title-6-dark.webp" width="100%">
+</picture>
 
 Every push to `main` builds both in GitHub Actions (artifacts `stash-windows`
 and `stash-macos`), so you don't need a local toolchain. To build it yourself

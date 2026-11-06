@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>stash README art</title>
 <!-- The README's pictures: the real popup (ui/index.html with its demo data) framed over the paintings in docs/art.
-     Pick one with ?shot=hero|kinds|stack|panels|keys|secrets&theme=dark|light; scripts/readme-art.sh renders them all. -->
+     Pick one with ?shot=hero|title|stack|panels|keys|secrets&theme=dark|light (title takes &s=1..6); scripts/readme-art.sh renders them all. -->
 <style>
   @font-face { font-family: "Geist"; src: url("../ui/fonts/geist.woff2") format("woff2"); font-weight: 100 900; }
   @font-face { font-family: "Geist Mono"; src: url("../ui/fonts/geist-mono.woff2") format("woff2"); font-weight: 100 900; }
@@ -66,14 +66,22 @@
   .halo { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 255, 255, .16), transparent); z-index: 4; }
   :root:not([data-theme="dark"]) .halo { background: radial-gradient(closest-side, rgba(255, 255, 255, .95), transparent); }
 
-  /* kinds */
-  .kinds { position: absolute; inset: 34px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
-  .kind { position: relative; display: flex; flex-direction: column; align-items: center; padding: 34px 14px 26px; border-radius: 22px; background: radial-gradient(90% 120px at 50% 0, var(--lamp), transparent 75%) no-repeat, var(--panel); box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--ring-top); text-align: center; }
-  .kind .tile { width: 86px; height: 86px; border-radius: 22px; }
-  .kind .tile svg.i { width: 34px; height: 34px; stroke-width: 1.5; }
-  .kind h3 { margin-top: 24px; font-size: 25px; font-weight: 600; letter-spacing: -.035em; }
-  .kind p { margin-top: 6px; color: var(--muted); font-size: 14.5px; line-height: 1.35; letter-spacing: -.005em; }
-  .kind code { margin-top: auto; padding: 5px 9px; border-radius: 7px; background: var(--tile-bg); box-shadow: var(--tile-shadow); font: 500 12.5px/1 "Geist Mono", monospace; letter-spacing: -.02em; color: var(--soft); }
+  /* Divine light: the one warm colour, borrowed from the paintings' gold. */
+  :root { --gold: #a87622; --gold-soft: rgba(196, 140, 40, .55); --gold-glow: rgba(214, 158, 52, .5); --ink: #1c1917; }
+  :root[data-theme="dark"] { --gold: #f1cf8b; --gold-soft: rgba(241, 207, 139, .5); --gold-glow: rgba(255, 196, 92, .55); --ink: #f5f5f4; }
+  .serif { font-family: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; }
+  .kbd.lit { transform: translateY(3px); filter: brightness(1.6); box-shadow: inset 0 0 0 1px var(--hair), 0 0 0 rgba(0, 0, 0, 0); }
+  .note { position: absolute; z-index: 3; border-radius: 16px; overflow: hidden; background: var(--desk); box-shadow: 0 0 0 1px var(--line), 0 50px 100px -30px rgba(0, 0, 0, .7), inset 0 1px 0 var(--ring-top); }
+  .note .desk-bar { height: 44px; }
+  .note .hdr { display: flex; gap: 10px; padding: 13px 26px; border-bottom: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+  .note .hdr b { color: var(--fg); font-weight: 500; }
+  .note .body { padding: 20px 26px 26px; font-size: 16px; line-height: 30px; letter-spacing: -.01em; color: var(--soft); }
+  .note .caret { display: inline-block; width: 2px; height: 20px; margin: 0 0 -4px 1px; background: var(--fg); border-radius: 1px; }
+  .note .pasted { color: var(--fg); border-radius: 4px; padding: 1px 0; }
+  .frame.bare { background: transparent; border-radius: 0; }
+  .frame.bare::after { display: none; }
+  .ttile { width: 72px; height: 72px; border-radius: 19px; color: var(--gold); box-shadow: var(--tile-shadow), 0 0 0 1px var(--gold-soft), 0 0 26px -6px var(--gold-glow); }
+  .ttile svg.i { width: 30px; height: 30px; stroke-width: 1.6; }
 
   /* stack */
   .desk { position: absolute; border-radius: 14px; background: var(--desk); box-shadow: 0 0 0 1px var(--line), 0 40px 90px -30px rgba(0, 0, 0, .55); overflow: hidden; z-index: 2; }
@@ -124,7 +132,7 @@
   document.documentElement.dataset.theme = theme;
   const dark = theme === 'dark';
 
-  const SIZES = { hero: [1280, 600], kinds: [1280, 380], stack: [1280, 640], panels: [1280, 640], keys: [1280, 230], secrets: [1280, 460] };
+  const SIZES = { hero: [1280, 600], title: [1280, 220], stack: [1280, 640], panels: [1280, 640], keys: [1280, 230], secrets: [1280, 460] };
   const [W, H] = SIZES[shot];
   document.documentElement.style.width = document.body.style.width = W + 'px';
   document.documentElement.style.height = document.body.style.height = H + 'px';
@@ -147,6 +155,7 @@
     enter: '<path d="M19 5v6a3 3 0 0 1-3 3H5"/><path d="m9 10-4 4 4 4"/>',
     shift: '<path d="M12 4 4.5 12H9v7.5h6V12h4.5Z"/>',
     tab: '<path d="M20 5v14"/><path d="M4 12h12"/><path d="m12 8 4 4-4 4"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
     arrow: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
     click: '<path d="M8 3v2.5"/><path d="M3 8h2.5"/><path d="m4.5 4.5 1.75 1.75"/><path d="m9 9 11 4.5-4.6 1.9-1.9 4.6Z"/>',
   };
@@ -162,35 +171,149 @@
     return f;
   };
 
+  // Animated scenes set window.SCENE = { duration, fps } and window.setT(seconds); scripts/readme-anim.mjs
+  // steps that clock frame by frame. Opened without ?anim, a scene shows the moment ?t= (or its own pick).
+  const clamp = (x) => Math.max(0, Math.min(1, x));
+  const ease = (x) => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+  const out = (x) => 1 - Math.pow(1 - clamp(x), 3);
+  const seg = (t, a, b, f = ease) => f((t - a) / (b - a));
+  const mix = (a, b, k) => a + (b - a) * k;
+  // The popup frame with its own motion switched off, so the scene's clock decides every pixel.
+  const still = (f) => {
+    const st = f.contentDocument.createElement('style');
+    st.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; } .card.enter { opacity: 1 !important; transform: none !important; }';
+    f.contentDocument.head.appendChild(st);
+  };
+  const typeInto = (f, text) => {
+    const q = f.contentDocument.getElementById('q');
+    if (q.value === text) return;
+    q.value = text;
+    q.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
   const frame = document.getElementById('frame');
   const SHOTS = {
+    // What really happens, at real speed: ⌃⌥V, the popup opens at the caret with the app's own
+    // entrance, g h b finds the link, Enter closes it and the link is pasted where the caret was.
     hero() {
-      frame.innerHTML = `<div class="art" style="background-position: ${dark ? '62% 30%' : '58% 40%'}"></div>
-        <div class="scrim-l"></div><div class="scrim-v"></div>
-        <div class="halo" style="left: 650px; top: -40px; width: 680px; height: 680px"></div>
-        <div style="position: absolute; left: 76px; top: 92px; width: 600px; z-index: 6">
+      frame.innerHTML = `<div class="art" style="background-position: ${dark ? '62% 30%' : '58% 40%'}; filter: saturate(${dark ? 1.15 : 1.05})"></div>
+        <div class="scrim-l" style="background: linear-gradient(90deg, rgba(var(--scrim), .97) 0%, rgba(var(--scrim), .88) 32%, rgba(var(--scrim), .25) 58%, rgba(var(--scrim), .05) 100%)"></div>
+        <div class="scrim-v"></div>
+        <div class="halo" style="left: 640px; top: -80px; width: 760px; height: 760px; opacity: .6"></div>
+        <div style="position: absolute; left: 76px; top: 92px; width: 520px; z-index: 6">
           <div class="icon"><i style="width: 40px"></i><i style="width: 32px"></i><i style="width: 22px"></i></div>
           <div class="word">stash</div>
           <div class="tag"><b>Everything you copied,</b><br>one keystroke away.</div>
           <div style="display: flex; align-items: center; gap: 8px; margin-top: 40px">
-            ${cap('⌃')}${cap('⌥')}${cap('V')}
+            <span class="kbd" id="k0">⌃</span><span class="kbd" id="k1">⌥</span><span class="kbd" id="k2">V</span>
             <span style="margin-left: 14px; color: var(--muted); font-size: 16px; line-height: 1.35">A tiny clipboard history<br>for Windows and macOS</span>
           </div>
+        </div>
+        <div class="note" id="note" style="left: 640px; top: 64px; width: 580px">
+          <div class="desk-bar"><i></i><i></i><i></i><span>Re: the paste bug</span></div>
+          <div class="hdr"><span>To</span><b>Sam Rivera</b></div>
+          <div class="body">Hi Sam,<br>Fixed it, see <span class="pasted" id="pasted"></span><span class="caret" id="caret"></span></div>
         </div>`;
-      frame.appendChild(popup(dark ? 'sel=2&stack=6,11,1,4' : 'sel=2', 'left: 742px; top: 34px; height: 566px'));
+      const el = (id) => document.getElementById(id);
+      const pop = popup('', 'left: 0; top: 0; height: 540px; transform-origin: 40px 0', (f) => { still(f); SCENE.ready = true; render(); });
+      frame.appendChild(pop);
+      const LINK = 'github.com/b-evn/stash/issues/7';
+      const fr = frame.getBoundingClientRect();
+      let T = params.has('t') ? Number(params.get('t')) : 4;
+
+      // A caret stays lit for .6 s after each key, then blinks slowly: .6 s off, .6 s on.
+      const lit = (since) => since < .6 || Math.floor((since - .6) / .6) % 2 === 1;
+      const BS = 7, STEP = .15;
+
+      function render() {
+        const t = T;
+        const doc = pop.contentDocument;
+        // The popup opens just below where the caret sits before the paste.
+        el('pasted').textContent = '';
+        const c0 = el('caret').getBoundingClientRect();
+        const cx = c0.left - fr.left, cy = c0.top - fr.top;
+        pop.style.left = (cx - 40) + 'px';
+        pop.style.top = (cy + 2) + 'px';
+
+        // ⌃ and ⌥ held, V tapped.
+        el('k0').classList.toggle('lit', t > 1.6 && t < 2.35);
+        el('k1').classList.toggle('lit', t > 1.75 && t < 2.35);
+        el('k2').classList.toggle('lit', t > 1.95 && t < 2.12);
+        // Shown on V with the app's entrance (card-in: .34s, 4px drop, slight scale and blur); gone at once on Enter.
+        const shown = t >= 1.95 && t < 4.8;
+        const k = seg(t, 1.95, 2.29, out);
+        pop.style.opacity = shown ? k : 0;
+        pop.style.transform = `translateY(${mix(-4, 0, k)}px) scale(${mix(.985, 1, k)})`;
+        pop.style.filter = `blur(${(1 - k) * 4}px)`;
+        const typed = t < 2.95 ? '' : t < 3.3 ? 'g' : t < 3.62 ? 'gh' : 'ghb';
+        typeInto(pop, typed);
+        // The search field's caret, drawn by hand so it blinks on the scene's clock.
+        const q = doc.getElementById('q');
+        let fake = doc.getElementById('fake-caret');
+        if (!fake) {
+          q.style.caretColor = 'transparent';
+          fake = doc.createElement('span');
+          fake.id = 'fake-caret';
+          fake.style.cssText = 'position: absolute; width: 1.5px; height: 17px; border-radius: 1px; background: currentColor; pointer-events: none';
+          q.parentElement.style.position = 'relative';
+          q.parentElement.appendChild(fake);
+        }
+        const cv = (render.cv = render.cv || doc.createElement('canvas')).getContext('2d');
+        const cs = doc.defaultView.getComputedStyle(q);
+        cv.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        const qb = q.getBoundingClientRect(), lb = q.parentElement.getBoundingClientRect();
+        fake.style.left = (qb.left - lb.left + parseFloat(cs.paddingLeft) + cv.measureText(typed).width) + 'px';
+        fake.style.top = (qb.top - lb.top + (qb.height - 17) / 2) + 'px';
+        fake.style.color = cs.color;
+        const lastKey = t < 2.95 ? 1.95 : t < 3.3 ? 2.95 : t < 3.62 ? 3.3 : 3.62;
+        fake.style.opacity = lit(t - lastKey) ? 1 : 0;
+        const enterKbd = doc.querySelector('#hints kbd');
+        if (enterKbd) {
+          const down = t > 4.62 && t < 4.8;
+          enterKbd.style.transform = down ? 'translateY(1px)' : '';
+          enterKbd.style.filter = down ? 'brightness(1.4)' : '';
+        }
+        // Pasted in one go, and the mail app makes it a link. Then Backspace is pressed once per letter, every
+        // .15 s, until the link is gone and the loop is back where it began.
+        let shownLink = '';
+        if (t >= 4.9) shownLink = LINK.slice(0, Math.max(0, LINK.length - (t >= BS ? Math.floor((t - BS) / STEP) + 1 : 0)));
+        el('pasted').textContent = shownLink;
+        el('pasted').style.cssText = shownLink ? `color: ${dark ? '#58a6ff' : '#0969da'}; text-decoration: underline; text-underline-offset: 3px` : '';
+        // The reply's caret, timed from its last key: the paste, or the latest Backspace.
+        const presses = t >= BS ? Math.min(LINK.length, Math.floor((t - BS) / STEP) + 1) : 0;
+        const lastKeyAt = presses ? BS + (presses - 1) * STEP : t >= 4.9 ? 4.9 : 0;
+        el('caret').style.opacity = !shown && lit(t - lastKeyAt) ? 1 : 0;
+      }
+      window.SCENE = { duration: 13, fps: 25, ready: false };
+      window.setT = (t) => { T = t; render(); return Promise.resolve(); };
     },
 
-    kinds() {
-      const K = [
-        ['text', 'Text', 'Fuzzy search,<br>every word', '@text', 'text'],
-        ['link', 'Links', 'Opened in your<br>browser', '@link', 'link'],
-        ['code', 'Code', 'Language badge,<br>copy as a fence', '@code', 'code'],
-        ['image', 'Images', 'Text inside them<br>is searchable', '@image', 'image'],
-        ['file', 'Files', 'Thumbnails, font<br>samples, paths', '@file', 'file'],
-        ['color', 'Colours', 'Copy as HEX,<br>RGB or HSL', '@color', 'color'],
-      ];
-      frame.innerHTML = `<div class="lamp"></div><div class="kinds">${K.map(([icon, name, hint, tok]) => `
-        <div class="kind"><span class="tile">${svg(icon)}</span><h3>${name}</h3><p>${hint}</p><code>${tok}</code></div>`).join('')}</div>`;
+    // A section's title as a banner: numeral, heading and line on the left, a detail of the painting on
+    // the right with the section's own tiles floating over it. ?s=1..6 picks the section.
+    title() {
+      const S = {
+        1: ['I', 'Everything goes in', 'Text, links, code, images, files and colours.', ['text', 'link', 'code', 'image', 'file', 'color'], dark ? '58% 22%' : '30% 25%'],
+        2: ['II', 'Paste stack', 'Collect in order, paste with plain Ctrl+V.', ['click', 'arrow', 'enter'], dark ? '44% 70%' : '70% 55%'],
+        3: ['III', 'Keys', 'Everything from the keyboard.', ['command', 'enter', 'shift', 'tab'], dark ? '80% 40%' : '85% 20%'],
+        4: ['IV', 'Find anything', 'Loose matching, filters as chips.', ['search', 'code', 'image'], dark ? '20% 55%' : '15% 60%'],
+        5: ['V', 'Private by default', 'Secrets blurred, history encrypted.', ['lock', 'key', 'card', 'bank'], dark ? '66% 85%' : '50% 85%'],
+        6: ['VI', 'Build', 'From source, on Windows or macOS.', ['code', 'command', 'file'], dark ? '35% 40%' : '35% 75%'],
+      };
+      const [n, h, line, icons, pos] = S[params.get('s') || 1];
+      // No frame: the banner is see-through and its painting dissolves at every edge, so it sits on
+      // GitHub's own page colour (#0d1117 dark, #fff light) like part of the text, flush with its left edge.
+      frame.classList.add('bare');
+      const fg = dark ? '#f0f6fc' : '#1f2328', muted = dark ? '#9198a1' : '#59636e';
+      frame.innerHTML = `<div class="art" style="left: 30%; background-position: ${pos}; background-size: 190%; filter: saturate(1.1) brightness(${dark ? .8 : 1.02});
+          -webkit-mask: linear-gradient(90deg, transparent, rgba(0, 0, 0, .35) 22%, #000 48%, #000 78%, transparent), linear-gradient(transparent, rgba(0, 0, 0, .6) 22%, #000 42%, #000 58%, rgba(0, 0, 0, .6) 78%, transparent); -webkit-mask-composite: source-in; mask-composite: intersect"></div>
+        <div style="position: absolute; left: 0; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; z-index: 3">
+          <div class="serif" style="display: flex; align-items: center; gap: 14px; color: var(--gold); font-size: 24px; letter-spacing: .18em">${n}<span style="width: 44px; height: 1px; background: var(--gold-soft)"></span></div>
+          <div style="margin: 8px 0 0 -3px; font-size: 76px; font-weight: 600; letter-spacing: -.045em; line-height: 1; color: ${fg}">${h}</div>
+          <div style="margin-top: 14px; color: ${muted}; font-size: 27px; letter-spacing: -.015em">${line}</div>
+        </div>
+        <div style="position: absolute; right: 64px; top: 0; bottom: 0; display: flex; align-items: center; gap: 16px; z-index: 3">
+          ${icons.map((k, i) => `<span class="tile ttile" style="transform: translateY(${[-10, 8, -4, 10, -8, 4][i]}px)">${svg(k)}</span>`).join('')}
+        </div>`;
     },
 
     stack() {

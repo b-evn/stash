@@ -1,7 +1,8 @@
 #!/bin/sh
 # Redraws the README's pictures (docs/*-dark.webp, docs/*-light.webp) from docs/readme-art.html:
-# the real popup with its demo data, framed over the paintings in docs/art. Needs python3,
-# cwebp (brew install webp) and Google Chrome (set CHROME to use another Chromium). Run from
+# the real popup with its demo data, framed over the paintings in docs/art. The hero is animated and
+# recorded frame by frame by scripts/readme-anim.mjs. Needs python3, cwebp (brew install webp), Node 22+,
+# ffmpeg with libwebp and Google Chrome (set CHROME to use another Chromium). Run from
 # anywhere: scripts/readme-art.sh, or name shots to redraw only those: scripts/readme-art.sh hero keys
 set -e
 ONLY=" $* "
@@ -40,8 +41,25 @@ shot() {
   done
 }
 
-shot hero 1280 600
-shot kinds 1280 380
+# Animated: about 2 MB each, at 1.5x so the 175 frames stay light.
+anim() {
+  case "$ONLY" in "  " | *" $1 "*) ;; *) return 0 ;; esac
+  for theme in dark light; do
+    CHROME="$CHROME" BASE="http://localhost:$PORT" node scripts/readme-anim.mjs "$1" "$theme" "docs/$1-$theme.webp" 1.5
+  done
+}
+
+anim hero
+# The six section banners, see-through so they sit on GitHub's own page colour.
+case "$ONLY" in "  " | *" title "*)
+  for s in 1 2 3 4 5 6; do
+    for theme in dark light; do
+      "$CHROME" --headless=new --hide-scrollbars --force-device-scale-factor=2         --default-background-color=00000000 --window-size=1280,220 --virtual-time-budget=4000         --screenshot="$TMP/shot.png" "http://localhost:$PORT/docs/readme-art.html?shot=title&s=$s&theme=$theme" 2>/dev/null
+      webp "$TMP/shot.png" "docs/title-$s-$theme.webp"
+      echo "docs/title-$s-$theme.webp"
+    done
+  done ;;
+esac
 shot stack 1280 640
 shot panels 1280 640
 shot keys 1280 230
