@@ -105,8 +105,9 @@
   .secret-row { display: flex; align-items: center; gap: 14px; height: 58px; padding: 0 16px; border-radius: 12px; }
   .secret-row .tile { width: 34px; height: 34px; border-radius: 9px; }
   .secret-row .tile svg.i { width: 16px; height: 16px; }
-  .secret-row .what { width: 92px; flex: none; color: var(--muted); font-size: 12.5px; }
-  .secret-row .val { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; font-size: 14px; }
+  .secret-row .main { flex: 1; min-width: 0; }
+  .secret-row .val { display: block; white-space: nowrap; overflow: hidden; font-size: 14px; }
+  .secret-row .what { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }
   .secret-row.lit { background: linear-gradient(180deg, rgba(127, 127, 127, .1), rgba(127, 127, 127, .05)); box-shadow: inset 0 0 0 1px var(--hair); }
   .cursor { position: absolute; z-index: 9; width: 22px; height: 22px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .4)); }
   .headline { font-size: 46px; font-weight: 600; letter-spacing: -.045em; line-height: 1.02; }
@@ -136,6 +137,8 @@
     color: '<circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
     number: '<line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/>',
     key: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
+    bank: '<path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4z"/>',
+    lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     card: '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>',
     db: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
     command: '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>',
@@ -246,23 +249,23 @@
 
     secrets() {
       const rows = [
-        ['number', 'IBAN', 'DE89<span class="secret">3704004405320130</span>3000'],
-        ['card', 'Card', '<span class="secret">4111 1111 1111</span> 1111'],
-        ['key', 'Token', 'ghp_<span class="secret">a8Fk29QmZr7tLx0pVb3n</span>2345'],
-        ['code', '.env', 'DB_PASSWORD=<span class="secret">Tr0ub4dor&amp;3</span>'],
-        ['db', 'URL', 'postgres://app:<span class="secret">hunter2</span>@db:5432/main'],
+        ['bank', 'IBAN', 'DE89<span class="secret">3704004405320130</span>3000'],
+        ['card', 'Visa card', '<span class="secret">4111 1111 1111</span> 1111'],
+        ['key', 'GitHub token', 'ghp_<span class="secret">a8Fk29QmZr7tLx0pVb3n</span>2345'],
+        ['lock', 'Password', 'DB_PASSWORD=<span class="secret">Tr0ub4dor&amp;3</span>'],
+        ['db', 'Database URL', 'postgres://app:<span class="secret">hunter2</span>@db:5432/main'],
       ];
       frame.innerHTML = `<div class="art" style="background-position: ${dark ? '30% 20%' : '50% 30%'}; filter: blur(2px) saturate(.85); transform: scale(1.02)"></div>
         <div style="position: absolute; inset: 0; background: linear-gradient(90deg, rgba(var(--scrim), .96) 0, rgba(var(--scrim), .9) 44%, rgba(var(--scrim), .6) 100%)"></div>
         <div style="position: absolute; left: 76px; top: 0; bottom: 0; width: 470px; display: flex; flex-direction: column; justify-content: center; z-index: 3">
           <div class="headline">Secrets stay<br>out of sight.</div>
-          <div class="lede">IBANs, cards, tokens and passwords are blurred in the list, so a screen share shows nothing. Hover to read; pasting gives you the clip as it was copied.</div>
+          <div class="lede">IBANs, cards, tokens and passwords are blurred in the list, and each row names what it holds. Hover to read; pasting gives you the clip as it was copied.</div>
         </div>
         <div class="glass" style="position: absolute; left: 630px; top: 62px; width: 580px; padding: 10px">
           ${rows.map(([icon, what, val], i) => `<div class="secret-row${i === 3 ? ' lit' : ''}"><span class="tile">${svg(icon)}</span>
-            <span class="what">${what}</span><span class="val mono">${i === 3 ? val.replace('class="secret"', '') : val}</span></div>`).join('')}
+            <span class="main"><span class="val mono">${i === 3 ? val.replace('class="secret"', '') : val}</span><span class="what">${what}</span></span></div>`).join('')}
         </div>
-        <svg class="cursor" viewBox="0 0 24 24" style="left: 972px; top: 278px"><path d="M4 2l15 9-6.5 1.5L16 20l-3 1.5-3.5-7.5L4 18z" fill="${dark ? '#fafafa' : '#09090b'}" stroke="${dark ? '#09090b' : '#fff'}" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+        <svg class="cursor" viewBox="0 0 24 24" style="left: 858px; top: 266px"><path d="M4 2l15 9-6.5 1.5L16 20l-3 1.5-3.5-7.5L4 18z" fill="${dark ? '#fafafa' : '#09090b'}" stroke="${dark ? '#09090b' : '#fff'}" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
     },
   };
   SHOTS[shot]();

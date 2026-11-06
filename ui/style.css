@@ -237,6 +237,7 @@ body.above { min-height: 100vh; display: flex; flex-direction: column; justify-c
 .sub .secret { text-shadow: 0 0 5px var(--muted-fg); }
 .secret:hover { color: inherit; text-shadow: none; }
 .mono .title, .mono .sub { font-family: "Geist Mono", "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 12px; letter-spacing: -.02em; }
+.mono .sub.what { font-family: inherit; letter-spacing: normal; }
 mark { background: var(--hit); color: inherit; border-radius: 3px; box-shadow: 0 0 0 1px var(--hit); }
 
 .preview {

@@ -115,13 +115,13 @@ you can also edit by hand; it applies as soon as you save.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/secrets-light.png">
-  <img alt="Blurred secrets in the list: an IBAN, a card, a token, a password revealed under the pointer, and a database URL." src="docs/secrets-dark.png">
+  <img alt="Blurred secrets in the list, each row naming its kind: an IBAN, a Visa card, a GitHub token, a password revealed under the pointer, and a database URL." src="docs/secrets-dark.png">
 </picture>
 
 - **Secrets are blurred** in the list, so they stay hidden when you share your
   screen: IBANs, card numbers, API tokens, passwords, private keys and URLs with
-  a password in them. Hover to read
-  one. Pasting gives you the clip as it was copied.
+  a password in them. Each row names what it holds, such as
+  *Visa card* or *GitHub token*; hover to read it. Pasting gives you the clip as it was copied.
 - **Password managers are respected.** Copies they mark as "exclude from
   history" (1Password, KeePassXC…) are never stored.
 - **Nothing leaves your computer.** Text in images is recognized by the OCR

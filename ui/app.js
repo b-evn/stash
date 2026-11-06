@@ -57,6 +57,10 @@
     scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/>',
     camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
     key: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
+    lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    bank: '<path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4z"/>',
+    card: '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>',
+    db: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
     history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
     // Keys drawn in menu keycaps.
     command: '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>',
@@ -550,7 +554,8 @@
   function paint(node, text, hideAll = false, max = 300) {
     const s = text.slice(0, max);
     const hits = query() ? StashSearch.hits(query(), s) : new Set();
-    const blur = hideAll ? [[0, s.length]] : StashSecrets.find(s);
+    // Found in a little more than is shown, so a secret the cut splits still counts.
+    const blur = hideAll ? [[0, s.length]] : StashSecrets.find(text.slice(0, max + 256));
     let run = '', on = false, hidden = false, into = node;
     const flush = () => {
       if (!run) return;
@@ -598,6 +603,20 @@
     return graphemes(t).find((g) => g.trim());
   }
 
+  // The kinds of secret a clip holds (an image's in its recognized text),
+  // worked out once per clip.
+  const secretCache = new WeakMap();
+  function secretsOf(c) {
+    if (!secretCache.has(c)) secretCache.set(c, c.kind === 'file' ? [] : StashSecrets.types(c.kind === 'image' ? c.ocr_text || '' : c.text));
+    return secretCache.get(c);
+  }
+
+  // "IBAN", "Stripe key, Database URL", "GitHub token, Password +1".
+  function secretNames(found) {
+    const names = found.slice(0, 2).map((t) => t.label).join(', ');
+    return found.length > 2 ? `${names} +${found.length - 2}` : names;
+  }
+
   function tile(c) {
     const t = el('div', 'tile');
     if (c.thumb && isFontFile(c)) {
@@ -619,6 +638,9 @@
     } else if (gradientOf(c)) {
       t.classList.add('swatch');
       t.appendChild(el('i')).style.backgroundImage = gradientOf(c);
+    } else if (secretsOf(c).length) {
+      t.innerHTML = svg(secretsOf(c)[0].icon);
+      t.title = secretNames(secretsOf(c));
     } else if (c.kind === 'file') {
       const paths = lines(c.text);
       const ext = (baseName(paths[0] || '').match(/\.([a-z0-9]{1,4})$/i) || [])[1];
@@ -1111,7 +1133,10 @@
     const d = describe(c);
     const main = el('div', 'main');
     paint(main.appendChild(el('span', 'title')), d.title);
-    if (d.sub) paint(main.appendChild(el('span', 'sub')), d.sub, c.kind !== 'image' && StashSecrets.privateKey(c.text));
+    // A clip holding secrets says which, in place of its second line.
+    const found = secretsOf(c);
+    if (found.length) main.appendChild(el('span', 'sub what')).textContent = [secretNames(found), c.kind === 'image' && d.sub].filter(Boolean).join(' · ');
+    else if (d.sub) paint(main.appendChild(el('span', 'sub')), d.sub);
     drawThumb(c);
     const long = i === sel && shiftDown && !c.thumb && textPreview(c);
     if (i === sel && shiftDown && c.thumb) {
@@ -1160,8 +1185,8 @@
       const box = row.appendChild(el('div', 'preview text'));
       const body = box.appendChild(el('div', 'body'));
       // A private key stays blurred from its BEGIN line on, like in the row.
-      const k = StashSecrets.privateKey(c.text) ? long.text.indexOf('PRIVATE KEY-----') : -1;
-      const cut = k < 0 ? long.text.length : k + 'PRIVATE KEY-----'.length;
+      const k = StashSecrets.privateKey(long.text);
+      const cut = k < 0 ? long.text.length : k;
       paint(body, long.text.slice(0, cut), false, Infinity);
       paint(body, long.text.slice(cut), true, Infinity);
       if (long.more) box.appendChild(el('div', 'more')).textContent = long.more;
@@ -1305,7 +1330,7 @@
     if (stack.done) {
       const c = byId(stack.ids[0]);
       left.appendChild(el('span')).textContent = `Next ${stack.done + 1} of ${stack.done + stack.ids.length}`;
-      if (c) left.appendChild(el('span', 'next')).textContent = describe(c).title;
+      if (c) paint(left.appendChild(el('span', 'next')), describe(c).title);
     } else {
       left.appendChild(el('span')).textContent = 'Stack';
       left.appendChild(el('span', 'count')).textContent = String(stack.ids.length);
@@ -2022,6 +2047,9 @@
       c(18, 'file', 'C:\\Users\\ben\\Downloads\\Geist-Regular.woff2', 900, { bytes: 68200 }),
       // Made up. Split in two so secret scanners don't take it for a real key.
       c(16, 'code', 'STRIPE_SECRET_KEY=sk_' + 'live_51NzQ8vKd2Lr7XbW4eTfYp9Hm\nDATABASE_URL=postgres://app:Tr0ub4dor@db.internal:5432/main', 14000),
+      c(23, 'text', '4111 1111 1111 1111', 16000),
+      c(24, 'text', 'ghp_' + 'a8Fk29QmZr7tLx0pVb3nW4eTfYp92345', 18000),
+      c(25, 'code', 'DB_PASSWORD=Tr0ub4dor&3', 20000),
     ];
   }
 })();
