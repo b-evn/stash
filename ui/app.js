@@ -1999,18 +1999,18 @@
     const whiteboard = svgUrl('<rect width="300" height="200" fill="#fafafa"/><rect x="20" y="30" width="80" height="44" rx="8" fill="none" stroke="#18181b" stroke-width="2"/><rect x="200" y="30" width="80" height="44" rx="8" fill="none" stroke="#18181b" stroke-width="2"/><rect x="110" y="130" width="80" height="44" rx="8" fill="#18181b"/><path d="M100 52 H200 M60 74 L130 130 M240 74 L170 130" stroke="#71717a" stroke-width="2" fill="none"/>', 300, 200);
     const c = (id, kind, text, ago, o = {}) => ({ id, kind, text, len: text.length, bytes: text.length, width: null, height: null, thumb: null, pinned: false, uses: 0, created: now - ago * m, last_used: now - ago * m, ...o });
     return [
-      c(1, 'link', 'https://linear.app/acme/issue/INV-212/invoice-totals-off-by-one', 1),
+      c(1, 'link', 'https://github.com/b-evn/stash/issues/7', 1),
       c(2, 'image', '', 4, { thumb: dashboard, width: 2560, height: 1600, bytes: 412000, ocr_text: 'Q4 revenue dashboard\nARR $4.2M, up 18% year over year' }),
-      c(3, 'text', 'Hi Sam,\nAttached is the invoice for September. Let me know if anything looks off.\nBest, Alex', 9, { uses: 3 }),
-      c(4, 'file', 'C:\\Users\\alex\\Documents\\Invoices\\invoice-0923.pdf', 14, { bytes: 184320 }),
+      c(3, 'text', 'Hi Sam,\nAttached is the invoice for September. Let me know if anything looks off.\nBest, Ben', 9, { uses: 3 }),
+      c(4, 'file', 'C:\\Users\\ben\\Documents\\Invoices\\invoice-0923.pdf', 14, { bytes: 184320 }),
       c(5, 'code', 'const total = items.reduce((sum, i) => sum + i.price * i.qty, 0);\nreturn Math.round(total * 100) / 100;', 38, { uses: 5 }),
       c(6, 'email', 'billing@acme-industries.com', 75, { pinned: true, uses: 14 }),
-      c(7, 'file', 'C:\\Users\\alex\\Pictures\\Trip\\IMG_2041.jpg\nC:\\Users\\alex\\Pictures\\Trip\\IMG_2042.jpg\nC:\\Users\\alex\\Pictures\\Trip\\IMG_2043.jpg', 130, { bytes: 11650000 }),
+      c(7, 'file', 'C:\\Users\\ben\\Pictures\\Trip\\IMG_2041.jpg\nC:\\Users\\ben\\Pictures\\Trip\\IMG_2042.jpg\nC:\\Users\\ben\\Pictures\\Trip\\IMG_2043.jpg', 130, { bytes: 11650000 }),
       c(8, 'color', '#18181b', 200),
       c(9, 'image', '', 1500, { thumb: photo, width: 4032, height: 3024, bytes: 3400000 }),
       c(10, 'text', 'Meeting moved to Thursday 14:00 — bring the Q3 numbers', 1700),
       c(11, 'number', 'DE89 3704 0044 0532 0130 00'.replace(/\s/g, ''), 2900, { pinned: true, uses: 8 }),
-      c(12, 'file', 'C:\\Users\\alex\\Desktop\\brand\\logo.svg', 3100, { bytes: 6200 }),
+      c(12, 'file', 'C:\\Users\\ben\\Desktop\\brand\\logo.svg', 3100, { bytes: 6200 }),
       c(13, 'image', '', 5000, { thumb: whiteboard, width: 1200, height: 800, bytes: 98000, ocr_text: 'Checkout flow: cart → payment → receipt' }),
       c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
       c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
@@ -2018,8 +2018,8 @@
       c(22, 'text', '🚀 👍🏽 🇩🇪', 380),
       c(21, 'text', 'linear-gradient(135deg, #6366f1 0%, #ec4899 55%, #f59e0b 100%)', 520),
       c(20, 'text', demoVisuals()[20], 450),
-      c(19, 'text', '/Users/alex/Desktop/Screenshot 2026-10-26 at 14.03.12.png', 300),
-      c(18, 'file', 'C:\\Users\\alex\\Downloads\\Geist-Regular.woff2', 900, { bytes: 68200 }),
+      c(19, 'text', '/Users/ben/Desktop/Screenshot 2026-10-26 at 14.03.12.png', 300),
+      c(18, 'file', 'C:\\Users\\ben\\Downloads\\Geist-Regular.woff2', 900, { bytes: 68200 }),
       // Made up. Split in two so secret scanners don't take it for a real key.
       c(16, 'code', 'STRIPE_SECRET_KEY=sk_' + 'live_51NzQ8vKd2Lr7XbW4eTfYp9Hm\nDATABASE_URL=postgres://app:Tr0ub4dor@db.internal:5432/main', 14000),
     ];

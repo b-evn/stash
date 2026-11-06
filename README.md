@@ -1,274 +1,162 @@
-# stash
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.png">
+  <img alt="stash: everything you copied, one keystroke away. The popup over a Baroque painting of the gods." src="docs/hero-dark.png">
+</picture>
 
-A tiny clipboard history for Windows and macOS. Press a hotkey and a small
-list pops up right at your text caret — pick a clip with the keyboard and it's
-pasted. Text, links, code, images and files all go in. Text inside copied
-images is recognized locally, so screenshots are searchable too. Everything
-stays on your computer.
+<p align="center">
+  <b>A tiny clipboard history for Windows and macOS.</b><br>
+  Press a hotkey and a small list pops up right at your text caret. Pick a clip with the keyboard and it's pasted.
+</p>
 
-On macOS, read `Ctrl` as `⌘` (Command) everywhere below, except in the hotkey,
-which is `Ctrl+Option+V` (`⌃⌥V`) on both systems.
+<p align="center">
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-27272a?style=flat-square&labelColor=09090b">
+  <img alt="macOS 10.15 and later, universal" src="https://img.shields.io/badge/macOS-10.15%2B%20universal-27272a?style=flat-square&labelColor=09090b">
+  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-27272a?style=flat-square&labelColor=09090b">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-stable-27272a?style=flat-square&labelColor=09090b">
+  <img alt="Stays on your computer" src="https://img.shields.io/badge/data-stays%20local-fafafa?style=flat-square&labelColor=09090b">
+</p>
 
-<p align="center"><img src="docs/in-use-light.png" width="520" alt="stash in use"></p>
+<p align="center">
+  <a href="#everything-goes-in">Everything goes in</a> ·
+  <a href="#paste-stack">Paste stack</a> ·
+  <a href="#keys">Keys</a> ·
+  <a href="#find-anything">Find anything</a> ·
+  <a href="#private-by-default">Private by default</a> ·
+  <a href="#build">Build</a>
+</p>
+
+<br>
+
+## Everything goes in
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/kinds-light.png">
+  <img alt="Six kinds of clip: text, links, code, images, files and colours, each with its search filter." src="docs/kinds-dark.png">
+</picture>
+
+Text, links, code, images and files all go in, and
+everything stays on your computer.
+Text inside screenshots is recognized on your machine, so you can search
+those too.
+
+- **Previews** for what a row can't spell out: thumbnails for image files, SVG
+  markup and image data URLs, an "Aa" in the font for font files, swatches for
+  colours and CSS gradients, the language on code. Hold `Shift` to see an image
+  larger or long text in full.
+- **Quick actions** on hover: open a link, show a file in Explorer or Finder,
+  copy code as a fenced block, copy a colour as HEX, RGB or HSL. Right-click for
+  the same in a menu.
+- **macOS screenshots** (`⌘⇧3`, `⌘⇧4`, `⌘⇧5`) are still saved as files and land
+  in the history too, ready to paste.
 
 ## Paste stack
 
-<img src="docs/stack-dark.png" align="right" width="300" alt="paste stack">
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/stack-light.png">
+  <img alt="A paste stack of four clips over a payment form: each Cmd+V pastes the next clip into the next field." src="docs/stack-dark.png">
+</picture>
 
-Collect clips in the order you need them, then paste them one after another
-with plain `Ctrl+V` (`⌘V` on macOS), in any app. Made for forms: email, Tab,
-Ctrl+V, IBAN, Tab, Ctrl+V…
+Made for forms. `Ctrl`-click clips in the order you need them, close the popup,
+and each plain `Ctrl+V` pastes the next one, in any app: email, Tab, `Ctrl+V`,
+IBAN, Tab, `Ctrl+V`…
 
-1. In the popup, `Ctrl`-click a clip (`⌘`-click on macOS) to add it. It gets
-   a number, and the footer becomes the stack bar. Clip 1 goes straight onto
-   the clipboard. `Ctrl`-click it again to take it out; a plain click pastes
-   that clip and ends the stack.
-2. Close the popup and press `Ctrl+V`: it pastes clip 1. The next `Ctrl+V`
-   pastes clip 2, then clip 3, and so on. (`Enter` in the popup pastes the
-   next clip too.)
-3. It ends after the last clip, when you copy something yourself, or with the
-   × in the stack bar (open the popup to see what's next).
+The stack ends after its last clip, when you copy something
+yourself, or with the × in its bar. It never holds up your paste: it waits for
+you to let go of V, then puts the next clip on the clipboard.
 
-How it works: the stack lives in the stash process, not the popup, so it
-keeps running with the popup closed. stash never intercepts or delays your
-paste. While a stack runs it watches the keyboard (a low-level keyboard hook on
-Windows, an event tap on macOS), and when you let go of V after a `Ctrl+V` /
-`⌘V` it puts the next clip on the clipboard. Pastes stash sends itself are
-tagged and skipped, and the watcher stops as soon as the stack ends. On macOS
-this needs Accessibility access (see below).
+## Keys
 
-<br clear="right">
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/keys-light.png">
+  <img alt="The main keys: Ctrl+Option+V opens, Enter pastes, Cmd+1 to 9 pastes a row, hold Shift to preview, Cmd-click stacks, Tab cycles kinds." src="docs/keys-dark.png">
+</picture>
 
-## Use
+On macOS read `Ctrl` as `⌘`, except in the hotkey, which is `⌃⌥V` on both.
 
 | key | does |
 | --- | --- |
 | `Ctrl+Alt+V` | open / close the popup (configurable) |
-| type | search |
-| `↑` `↓` · `Ctrl+J/K` | move |
-| `Enter` | paste (with a stack: paste its next clip) |
-| `Ctrl+1`…`9` | paste the numbered row |
-| `Ctrl+Enter` | copy only, don't paste |
-| hold `Shift` | preview the selected clip: an image larger, long text and code in full |
-| `Ctrl`+click | add to / remove from the paste stack |
-| `Ctrl+P` | pin / unpin (pinned clips are never pruned) |
-| `Ctrl+D` · `Del` (empty search) | delete (macOS also `⌘⌫`) |
-| `Tab` / `Shift+Tab` | cycle tabs: all · text · links · code · images · files |
+| `Enter` | paste |
+| `Ctrl+1`…`9` | paste that row |
+| `Ctrl+Enter` | copy without pasting |
+| hold `Shift` | preview |
+| `Ctrl`+click | add to the paste stack |
+| `Ctrl+P` | pin, so it's never pruned |
+| `Ctrl+D` | delete |
+| `Tab` | cycle kinds |
 | `Ctrl+S` | cycle sort: recent · frequent · a–z · largest |
-| `Ctrl+T` | switch between dark and light (starts out like your system) |
+| `Ctrl+T` | dark or light |
 | `Ctrl+,` | settings |
-| `Backspace` (empty search) | remove the last filter chip |
-| `Esc` | clear search, then close |
+| `Esc` | clear the search, then close |
 
-### Search
+## Find anything
 
-Plain words are fuzzy (`ghb` finds *GitHub*), and every word must match.
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/panels-light.png">
+  <img alt="Three popups: filter chips for files without logo, a code clip previewed with Shift held, and the settings page." src="docs/panels-dark.png">
+</picture>
 
-| syntax | meaning |
+Just type. Words match loosely (`ghb` finds *GitHub*), every word has to match,
+and a capital letter makes a word case-sensitive.
+
+| type | to find |
 | --- | --- |
-| `'word` | exact substring |
-| `^word` | starts with |
-| `!word` | exclude clips containing it |
-| `@link` `@code` `@path` `@color` `@number` `@email` `@text` `@image` `@file` | only that kind |
-| `@pin` | only pinned |
-| `@hour` `@today` `@week` | only recent |
+| `'word` · `^word` · `!word` | exactly it · starting with it · without it |
+| `@code` `@link` `@image` `@file` `@color` `@email` `@number` `@path` `@text` | one kind |
+| `@pin` · `@hour` `@today` `@week` | pinned · recent |
 
-A word with a capital letter matches case-sensitively. Filter words turn into
-chips as you finish them (type a space); click a chip's × to drop it.
-Combine freely: `@code !test fetch`.
+Filters turn into chips as you type them. Combine freely: `@code !test fetch`.
 
-Text that stash recognized inside a copied image is searched along with the
-clip, and the first line is shown in the image's row. OCR runs on your machine
-through the OCR engine built into Windows or macOS (Vision); set `ocr_images`
-to `false` in the config to turn it off.
+The gear in the footer opens the settings: shortcut, start at login, theme, what
+gets captured and how many clips to keep. They're saved to `config.json`, which
+you can also edit by hand; it applies as soon as you save.
 
-<p align="center"><img src="docs/showcase.png" width="660" alt="filter chips, dark and light"></p>
+## Private by default
 
-### Secrets
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/secrets-light.png">
+  <img alt="Blurred secrets in the list: an IBAN, a card, a token, a password revealed under the pointer, and a database URL." src="docs/secrets-dark.png">
+</picture>
 
-Secrets in the list are blurred, so they don't show at a glance when someone
-looks over your shoulder or you share your screen. Hover the blur to read it.
-Just enough stays visible to tell what the clip is and which one:
-
-| looks like | stays visible | example |
-| --- | --- | --- |
-| IBAN (checksum valid) | country, check digits, last 4 | `DE89░░░░░░░░░░3000` |
-| card number (Luhn valid) | last 4 | `░░░░ ░░░░ ░░░░ 1111` |
-| API token with a known prefix (`sk-`, `ghp_`, `AKIA`, `xoxb-`, JWT `eyJ`…) | prefix, last 4 | `ghp_░░░░░░░░2345` |
-| `password=`, `api_key:`, `"client_secret":`, `?access_token=`… | the name | `DB_PASSWORD=░░░░░░` |
-| password in a URL | everything else | `postgres://app:░░░░@db:5432` |
-| `Bearer` / `Basic` header value | the scheme | `Bearer ░░░░░░░░` |
-| private key (`-----BEGIN … PRIVATE KEY-----`) | the BEGIN line | |
-
-This only changes how the list shows them; pasting gives you the clip as it
-was copied. It also works on text recognized in screenshots.
-
-### Previews
-
-<p align="center"><img src="docs/previews.png" width="660" alt="file thumbnails and a font sample (dark), a code language badge, SVG markup and a blurred key (light)"></p>
-
-Copied image files (SVG, PNG, JPEG, GIF, WebP, BMP, ICO, AVIF, and on macOS
-also TIFF and HEIC) and copied SVG markup, as Figma and icon sites put it on the clipboard,
-show a thumbnail instead of a file or code icon, with their size in pixels.
-Hold `Shift` over the row for a larger preview. Transparent artwork sits on a
-checkerboard, so black icons stay visible in dark mode. Font files (TTF, OTF,
-WOFF, WOFF2) show "Aa" set in that font, in the theme's text colour.
-The same goes for a path to one of these files copied as text, such as from
-Finder's Copy as Pathname, Explorer's Copy as path or a terminal.
-Image data URLs (`data:image/png;base64,…`, also percent-encoded SVG) show
-the image they hold, as long as they fit within `max_clip_chars`.
-
-The thumbnail is drawn the first time the row is shown, from the original
-file (up to 20 MB) or markup, and stored at 160 px: as JPEG when the image is
-opaque and PNG when it has transparency, usually a few KB (fonts are only
-loaded to draw their sample, then unloaded). SVG is drawn as an
-image, so scripts in it never run. PDFs and videos keep their file icon.
-
-Long text, code and links that the row cuts short show their first 10
-lines while you hold `Shift`, with line breaks and indentation as copied, and
-how much more there is. Secrets stay blurred there too.
-
-Code clips show the language stash guesses in their icon (`JS`, `PY`, `RS`,
-`SQL`, `JSON`…), the same guess it uses for copying as a fenced block.
-CSS gradients (`linear-gradient(…)`, `radial-…`, `conic-…`, also as a
-`background:` line) get a swatch, like colours do, and a clip of only emoji
-shows its first emoji large in place of the icon.
-
-### Pins, actions and menus
-
-The pin button next to the tabs shows pinned clips only. Hover a row for its
-quick actions: open a link in your browser, show a file in Explorer or Finder, copy code
-as a fenced block, copy a colour as HEX, RGB or HSL, pin or delete.
-Right-click any clip for the same actions in a stash-native menu, or
-right-click anywhere else for filters, sort, theme, settings and hide (on
-macOS, Ctrl-click works too). The tray icon (menu bar icon on macOS) has: pause
-capturing, start with Windows / open at login, clear history (keeps pinned),
-settings, quit.
-
-### Settings
-
-<p align="center"><img src="docs/settings.png" width="660" alt="the settings page, dark and light"></p>
-
-The gear in the footer (or `Ctrl+,`) turns the popup into a small settings
-page: the shortcut (click it and press a new one), start with Windows / open at
-login, theme, pause capturing, what gets captured (images, text in images,
-files, macOS screenshots, password-manager copies), how many clips to keep, and
-clear history. Changes apply at once and are written to `config.json`. `↑` `↓`
-move between rows, `Space` toggles, `Esc` goes back.
-
-### macOS screenshots
-
-Screenshots you take with macOS's own tool (`⌘⇧3`, `⌘⇧4`, `⌘⇧5`) are still
-saved as files as usual, and stash also puts each one on the clipboard. So it
-lands in your history (with its text recognized) and `⌘V` pastes it right
-away. stash follows the save location you pick in the Screenshot app and
-recognizes screenshots by the tag macOS gives them, so renamed or localized
-files work too. With the floating thumbnail on, macOS saves the file a few
-seconds later; turn it off under `⌘⇧5` → Options for instant capture. Set
-`capture_screenshots` to `false` in the config to turn this off.
-
-### macOS permissions
-
-stash lives in the menu bar, with no Dock icon. To paste for you, find the text
-caret and run a paste stack it needs **Accessibility** access: macOS asks on
-first launch; allow stash under System Settings → Privacy & Security →
-Accessibility. Without it, stash still records your clipboard and copies the
-clip you pick, and you press `⌘V` yourself.
-
-## Config
-
-`config.json` is created on first run in
-`%APPDATA%\app.stash.clipboard\` (Windows) or
-`~/Library/Application Support/app.stash.clipboard/` (macOS):
-
-```json
-{
-  "hotkey": "Ctrl+Alt+V",
-  "max_items": 2000,
-  "max_clip_chars": 100000,
-  "ignore_sensitive": true,
-  "capture_images": true,
-  "capture_files": true,
-  "ocr_images": true,
-  "max_image_megapixels": 40,
-  "capture_screenshots": true
-}
-```
-
-Most of it can be changed on the settings page; the size limits only here.
-Edits apply as soon as you save the file, no restart needed. If the file or
-the hotkey is invalid, the previous settings stay active.
-
-History lives next to it in `clips.db` (SQLite, not encrypted). Images are
-stored in full as PNG, with a small preview for the list; recognized text is
-stored next to them. For copied files stash keeps the paths, not the files
-(plus a small thumbnail for images): pasting puts the same files back on the
-clipboard, so a moved or deleted file won't paste. With
-`ignore_sensitive`, copies that password managers mark as "exclude from
-history" are never stored (on macOS: the nspasteboard.org concealed and
-transient types that password managers such as 1Password and KeePassXC set).
+- **Secrets are blurred** in the list, so they stay hidden when you share your
+  screen: IBANs, card numbers, API tokens, passwords, private keys and URLs with
+  a password in them. Hover to read
+  one. Pasting gives you the clip as it was copied.
+- **Password managers are respected.** Copies they mark as "exclude from
+  history" (1Password, KeePassXC…) are never stored.
+- **Nothing leaves your computer.** Text in images is recognized by the OCR
+  built into Windows and macOS. No account, no cloud.
 
 ## Build
 
-Needs Rust; on Windows 10 also the WebView2 runtime (already on Windows 11),
-on macOS the Xcode command line tools.
+Every push to `main` builds both in GitHub Actions (artifacts `stash-windows`
+and `stash-macos`), so you don't need a local toolchain. To build it yourself
+you need Rust, on Windows 10 also the WebView2 runtime, on macOS the Xcode
+command line tools.
 
 ```sh
 cargo install tauri-cli --version "^2" --locked
 cd src-tauri
-cargo tauri dev      # run
-cargo tauri build    # Windows: exe + installer (in target/release/bundle)
-../scripts/build-mac.sh   # macOS: stash.app + .dmg (in target/release/bundle)
+cargo tauri dev           # run
+cargo tauri build         # Windows: portable stash.exe + installer
+../scripts/build-mac.sh   # macOS: stash.app + .dmg
 ```
 
-On Windows `target/release/stash.exe` is a single portable file. On macOS
-drag `stash.app` to Applications. The build is signed ad hoc but not
-notarized, so macOS blocks the first launch: open System Settings → Privacy &
-Security and choose Open Anyway. `build-mac.sh` signs again so that macOS
-recognizes later builds as the same app and keeps the Accessibility
-permission (a plain `cargo tauri build` signs each build as a new app).
-Every push to `main` also builds both in GitHub Actions (artifacts
-`stash-windows` and `stash-macos`), so you don't need a local toolchain.
+On macOS drag `stash.app` to Applications. It isn't notarized, so allow the
+first launch under System Settings → Privacy & Security → Open Anyway, and give
+it **Accessibility** there so it can paste for you (without it, stash copies the
+clip and you press `⌘V`). `build-mac.sh` signs every build as the same app, so
+macOS keeps that permission.
 
-Tests: `node ui/search.test.js`, `node ui/secrets.test.js` and `cd src-tauri && cargo test --lib`.
-`ui/index.html` also opens in a plain browser with demo data for UI work.
+Tests: `node ui/search.test.js`, `node ui/secrets.test.js` and
+`cd src-tauri && cargo test --lib`. `ui/index.html` opens in a plain browser
+with demo data; the pictures here are that popup, redrawn by
+`scripts/readme-art.sh`.
 
-The screenshots come from the scenes in `docs/` (`in-use`, `stack`,
-`showcase`, `previews`, `settings`), which show the popup with that demo data.
-Serve the repository over http (the settings scene scrolls its right popup,
-which a `file://` page isn't allowed to do) and render each one with headless
-Chrome at 3×, at the size its `body` sets:
+<br>
 
-```sh
-python3 -m http.server 8000 &
-chrome --headless=new --hide-scrollbars --force-device-scale-factor=3 \
-  --window-size=824,540 --virtual-time-budget=12000 \
-  --screenshot=docs/settings.png http://localhost:8000/docs/settings.html
-```
-
-`in-use.html` takes `?theme=light` and `stack.html` `?theme=dark`. If a
-thumbnail is missing in a shot, render it again; they are drawn after the list.
-
-## Known limits
-
-- The popup appears at the caret in apps that expose a system caret (Notepad,
-  Word, most native fields; on macOS most Cocoa apps such as TextEdit, Notes,
-  Mail). Browsers and Electron apps draw their own caret, so there it appears
-  at the mouse pointer instead.
-- It can't paste into windows running as administrator unless stash does too,
-  and a paste stack doesn't notice pastes made into them.
-- A paste stack advances 120 ms after you let go of V. An app that reads the
-  clipboard later than that would get the next clip instead.
-- Image OCR uses the language packs installed in Windows, or the languages
-  Vision supports on macOS (detected automatically on macOS 13+). It handles
-  ordinary screenshots and photos of text; very small or stylised text can be
-  missed.
-- On macOS pasting presses the key in the V position, and the paste stack
-  watches that key, so with a Dvorak layout use "Dvorak – QWERTY ⌘".
-- macOS has no clipboard change event, so stash checks it 5 times a second
-  (a cheap counter read).
-- The Windows build was written and compile-checked from a Linux machine; it
-  has not been run on a real Windows desktop yet, so expect to tweak placement
-  and focus behaviour.
-
-UI font: [Geist](https://github.com/vercel/geist-font) (SIL OFL, `ui/fonts`). Icons: [Lucide](https://lucide.dev) (ISC), except the theme sun and moon, which are drawn for stash.
+<p align="center">
+  <img alt="stash" src="src-tauri/icons/128x128@2x.png" width="72"><br>
+  <sub>UI font: <a href="https://github.com/vercel/geist-font">Geist</a> (SIL OFL, <code>ui/fonts</code>). Icons: <a href="https://lucide.dev">Lucide</a> (ISC), except the theme sun and moon, which are drawn for stash.</sub><br>
+  <sub>Backdrops, both public domain: Peter Paul Rubens, <i>The Fall of Phaeton</i> (c. 1604–08, National Gallery of Art, Washington) and Francisco Bayeu, <i>Olympus: The Battle of the Giants</i> (1764, Museo del Prado).</sub>
+</p>
