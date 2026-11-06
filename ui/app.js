@@ -631,7 +631,7 @@
       t.innerHTML = svg(ICON[c.kind] ? c.kind : 'text');
     }
     const pos = stack.ids.indexOf(c.id);
-    if (pos >= 0) t.appendChild(el('span', 'badge')).textContent = String(stack.done + pos + 1);
+    if (pos >= 0) t.appendChild(el('span', pos === 0 ? 'badge next' : 'badge')).textContent = String(stack.done + pos + 1);
     return t;
   }
 
@@ -1213,12 +1213,15 @@
     const now = Date.now();
     const frag = document.createDocumentFragment();
     let last = null;
+    let n = 0;
+    // --i orders the rows' entrance when the popup opens (.stagger in style.css).
+    const add = (node) => { if (n < 14) node.style.setProperty('--i', n++); frag.appendChild(node); return node; };
     results.slice(0, MAX_ROWS).forEach((r, i) => {
       if (grouped) {
         const g = groupOf(r.clip, now);
-        if (g !== last) { frag.appendChild(el('div', 'group')).textContent = g; last = g; }
+        if (g !== last) { add(el('div', 'group')).textContent = g; last = g; }
       }
-      frag.appendChild(renderItem(r, i));
+      add(renderItem(r, i));
     });
     listEl.appendChild(frag);
     placeHighlight(false);
@@ -1878,6 +1881,7 @@
   configBtn.addEventListener('click', () => run('reveal_config'));
   [backBtn, configBtn].forEach(noFocusSteal);
 
+  let staggerEnd = null;
   async function open(target) {
     clearClickGuard();
     closeMenu(false, false);
@@ -1899,6 +1903,9 @@
     card.classList.remove('enter');
     void card.offsetWidth;
     card.classList.add('enter');
+    listEl.classList.add('stagger');
+    clearTimeout(staggerEnd);
+    staggerEnd = setTimeout(() => listEl.classList.remove('stagger'), 700);
     refresh();
     renderTabs(false);
     if (params.get('sel')) select(Number(params.get('sel')), true);

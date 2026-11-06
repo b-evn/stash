@@ -32,7 +32,7 @@ use db::{Clip, Db};
 use serde::Serialize;
 
 const CARD_W: f64 = 384.0;
-const MARGIN: f64 = 16.0;
+const MARGIN: f64 = 24.0;
 const MIN_H: f64 = 120.0;
 const MAX_H: f64 = 520.0;
 const GAP: f64 = 4.0;
