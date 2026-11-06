@@ -11,7 +11,7 @@ pub struct Entry {
     pub kind: String,
     pub text: String,
     pub ocr_text: String,
-    /// The formatting the text was copied with, as HTML.
+    /// The formatting the text was copied with, as HTML (CF_HTML on Windows).
     pub html: Option<String>,
     pub data: Option<Vec<u8>>,
     pub thumb: Option<Vec<u8>>,
@@ -99,7 +99,8 @@ impl Db {
         c.execute(
             "INSERT INTO entries (key, kind, text, ocr_text, html, data, thumb, width, height, bytes, created, last_used)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
-             ON CONFLICT(key) DO UPDATE SET last_used = excluded.last_used, html = excluded.html,
+             ON CONFLICT(key) DO UPDATE SET last_used = excluded.last_used,
+                 html = COALESCE(excluded.html, html),
                  ocr_text = CASE WHEN excluded.ocr_text <> '' THEN excluded.ocr_text ELSE ocr_text END",
             params![e.key, e.kind, e.text, e.ocr_text, e.html, e.data, e.thumb, e.width, e.height, e.bytes, now],
         )?;
@@ -376,15 +377,16 @@ mod tests {
     }
 
     #[test]
-    fn formatting_follows_the_latest_copy() {
+    fn formatting_is_kept_until_a_copy_brings_new_formatting() {
         let db = Db::in_memory().unwrap();
+        let html = |db: &Db| db.payload(db.list().unwrap()[0].id).unwrap().unwrap().html;
         db.add(&Entry { html: Some("<b>hi</b>".into()), ..text("hi") }, 1, 10).unwrap();
-        let c = &db.list().unwrap()[0];
-        assert!(c.rich);
-        assert_eq!(db.payload(c.id).unwrap().unwrap().html.as_deref(), Some("<b>hi</b>"));
+        assert!(db.list().unwrap()[0].rich);
+        // The same words copied from somewhere plain, or read while the formatting couldn't be.
         db.add(&text("hi"), 2, 10).unwrap();
-        let c = &db.list().unwrap()[0];
-        assert!(!c.rich && db.payload(c.id).unwrap().unwrap().html.is_none());
+        assert_eq!(html(&db).as_deref(), Some("<b>hi</b>"));
+        db.add(&Entry { html: Some("<i>hi</i>".into()), ..text("hi") }, 3, 10).unwrap();
+        assert_eq!(html(&db).as_deref(), Some("<i>hi</i>"));
     }
 
     #[test]

@@ -31,6 +31,8 @@ base64 = "0.22"
 [target.'cfg(windows)'.dependencies]
 # Windows has no system crypto SQLCipher can use, so OpenSSL is built in (needs Perl to build).
 libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher-vendored-openssl"] }
+# Raw CF_HTML, which arboard only reads as a fragment.
+clipboard-win = "5"
 windows = { version = "0.61", features = [
     "Foundation",
     "Globalization",
@@ -56,6 +58,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
     "NSArray",
     "NSDictionary",
     "NSEnumerator",
+    "NSData",
     "NSGeometry",
     "NSObject",
     "NSString",

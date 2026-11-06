@@ -239,7 +239,45 @@ pub fn decode_png(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     Some((info.width, info.height, rgba))
 }
 
+/// Whether `s` is a whole CF_HTML block, Windows' clipboard HTML, with header
+/// offsets that point inside it. An earlier build stored only the fragment.
+pub fn is_cf_html(s: &str) -> bool {
+    if !s.starts_with("Version:") {
+        return false;
+    }
+    let mut fields = std::collections::HashMap::new();
+    for line in s.lines() {
+        match line.split_once(':') {
+            Some((name, value)) if !name.starts_with('<') => fields.insert(name, value.trim()),
+            _ => break,
+        };
+    }
+    let offset = |name: &str| fields.get(name).and_then(|v| v.parse::<i64>().ok());
+    // One past the end too: some apps count the NUL that ends the block, which the read cuts off.
+    let inside = |n: i64| (0..=s.len() as i64 + 1).contains(&n);
+    let fragment = matches!((offset("StartFragment"), offset("EndFragment")), (Some(a), Some(b)) if inside(a) && inside(b) && a <= b);
+    // StartHTML and EndHTML may be -1, or missing, when the app sends no context.
+    fragment && ["StartHTML", "EndHTML"].iter().all(|name| offset(name).is_none_or(|n| n == -1 || inside(n)))
+}
+
 pub fn read(cb: &mut arboard::Clipboard, limits: &Limits) -> Option<Entry> {
+    // Text and formatting are read one after the other, so a stamp that moved in between
+    // means the formatting may belong to a newer copy. Office hands its formats over on
+    // the first read, which can move the stamp once, so it gets a second read first.
+    let mut entry = None;
+    for _ in 0..2 {
+        let stamp = crate::platform::clipboard_stamp();
+        let mut e = read_once(cb, limits)?;
+        if e.html.is_none() || crate::platform::clipboard_stamp() == stamp {
+            return Some(e);
+        }
+        e.html = None;
+        entry = Some(e);
+    }
+    entry
+}
+
+fn read_once(cb: &mut arboard::Clipboard, limits: &Limits) -> Option<Entry> {
     if limits.files {
         if let Ok(list) = cb.get().file_list() {
             let paths: Vec<String> = list.iter().map(|p| p.to_string_lossy().into_owned()).collect();
@@ -250,7 +288,8 @@ pub fn read(cb: &mut arboard::Clipboard, limits: &Limits) -> Option<Entry> {
     }
     if let Ok(text) = cb.get_text() {
         let mut entry = text_entry(&text, limits)?;
-        entry.html = cb.get().html().ok().filter(|h| !h.trim().is_empty() && h.len() <= MAX_HTML_BYTES);
+        entry.html = crate::platform::clipboard_html()
+            .filter(|h| !h.trim().is_empty() && h.len() <= MAX_HTML_BYTES && (!cfg!(windows) || is_cf_html(h)));
         return Some(entry);
     }
     if limits.images {
@@ -269,9 +308,12 @@ pub fn write(cb: &mut arboard::Clipboard, kind: &str, text: &str, data: Option<&
             cb.set_image(arboard::ImageData { width: w as usize, height: h as usize, bytes: Cow::Owned(rgba) })
         }
         "file" => cb.set().file_list(&text.lines().collect::<Vec<_>>()),
+        // Plain text when there's no formatting, or it can't be put back.
         _ => match html {
-            Some(html) => cb.set().html(html, Some(text)),
-            None => cb.set_text(text),
+            // A bare fragment, as an earlier build stored it on Windows: arboard wraps it in CF_HTML.
+            Some(html) if cfg!(windows) && !is_cf_html(html) => cb.set().html(html, Some(text)),
+            Some(html) if crate::platform::set_html(text, html) => Ok(()),
+            _ => cb.set_text(text),
         },
     }
     .map_err(|e| e.to_string())
@@ -366,6 +408,23 @@ mod tests {
         assert_eq!(thumb_from_data_url("data:image/jpeg;base64,/9j/4AAQ"), Some(vec![0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10]));
         assert_eq!(thumb_from_data_url("data:image/png;base64,aGVsbG8="), None);
         assert_eq!(thumb_from_data_url("data:text/html;base64,aGVsbG8="), None);
+    }
+
+    #[test]
+    fn cf_html_is_told_from_a_bare_fragment() {
+        let body = "<html><body><!--StartFragment--><b>hi</b><!--EndFragment--></body></html>";
+        let header = |start: usize| {
+            format!("Version:0.9\r\nStartHTML:{start:010}\r\nEndHTML:{:010}\r\nStartFragment:{:010}\r\nEndFragment:{:010}\r\n", start + body.len(), start + 31, start + 40)
+        };
+        let len = header(0).len();
+        let whole = header(len) + body;
+        assert!(is_cf_html(&whole));
+        assert!(is_cf_html(&whole.replace(&format!("StartHTML:{len:010}"), "StartHTML:-000000001")));
+        assert!(is_cf_html(&format!("Version:1.0\r\nSourceURL:https://x.dev/a\r\nStartFragment:0\r\nEndFragment:{}\r\n<p>a</p>", 4)));
+        assert!(!is_cf_html("<b>hi</b>"));
+        assert!(!is_cf_html("Version:0.9\r\nStartFragment:10\r\nEndFragment:999999\r\n<b>hi</b>"));
+        assert!(!is_cf_html("Version:0.9\r\nStartFragment:20\r\nEndFragment:10\r\n<b>hi</b>"));
+        assert!(!is_cf_html("Version:0.9\r\n<b>hi</b>"));
     }
 
     #[test]

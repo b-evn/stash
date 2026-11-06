@@ -74,7 +74,8 @@ you to let go of V, then puts the next clip on the clipboard.
   <img alt="The main keys: Ctrl+Option+V opens, Enter pastes, Cmd+1 to 9 pastes a row, hold Shift to preview, Cmd-click stacks, Tab cycles kinds." src="docs/keys-dark.png">
 </picture>
 
-On macOS read `Ctrl` as `⌘`, except in the hotkey, which is `⌃⌥V` on both.
+On macOS read `Ctrl` as `⌘` and `Alt` as `⌥`, except in the hotkey, which is
+`⌃⌥V` on both.
 
 | key | does |
 | --- | --- |

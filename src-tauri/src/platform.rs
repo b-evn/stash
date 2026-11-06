@@ -229,6 +229,46 @@ mod win {
         }
     }
 
+    // Whoever just copied often holds the clipboard a moment longer, so wait for it as arboard does.
+    fn open_clipboard() -> Option<clipboard_win::Clipboard> {
+        for _ in 0..5 {
+            if let Ok(open) = clipboard_win::Clipboard::new() {
+                return Some(open);
+            }
+            sleep(Duration::from_millis(5));
+        }
+        None
+    }
+
+    // A number that changes with every copy.
+    pub fn clipboard_stamp() -> i64 {
+        clipboard_win::raw::seq_num().map_or(0, |n| n.get() as i64)
+    }
+
+    // CF_HTML as the copying app wrote it, header and context included. arboard
+    // keeps only the fragment, which drops the <table> around cells copied in Excel.
+    pub fn clipboard_html() -> Option<String> {
+        let _open = open_clipboard()?;
+        let format = clipboard_win::register_format("HTML Format")?.get();
+        if !clipboard_win::is_format_avail(format) {
+            return None;
+        }
+        let mut out = Vec::new();
+        clipboard_win::raw::get_vec(format, &mut out).ok()?;
+        // The memory block can be larger than the text, which ends at a NUL.
+        if let Some(end) = out.iter().position(|&b| b == 0) {
+            out.truncate(end);
+        }
+        String::from_utf8(out).ok()
+    }
+
+    // Puts text back with its CF_HTML byte for byte, so the offsets in its header still hold.
+    pub fn set_html(text: &str, html: &str) -> bool {
+        let Some(_open) = open_clipboard() else { return false };
+        let Some(format) = clipboard_win::register_format("HTML Format") else { return false };
+        clipboard_win::raw::set_string(text).is_ok() && clipboard_win::raw::set_without_clear(format.get(), html.as_bytes()).is_ok()
+    }
+
     pub fn reveal(path: &str) {
         use std::process::Command;
         let path = path.trim();
@@ -268,7 +308,8 @@ mod mac {
     use super::Rect;
     use objc2::{rc::autoreleasepool, runtime::ProtocolObject, AnyThread, MainThreadMarker};
     use objc2_app_kit::{
-        NSApplication, NSApplicationActivationOptions, NSImage, NSPasteboard, NSPopUpMenuWindowLevel,
+        NSApplication, NSApplicationActivationOptions, NSImage, NSPasteboard, NSPasteboardTypeHTML, NSPasteboardTypeString,
+        NSPopUpMenuWindowLevel,
         NSRunningApplication, NSScreen, NSWindow, NSWindowCollectionBehavior, NSWorkspace,
     };
     use objc2_application_services::{
@@ -283,7 +324,7 @@ mod mac {
         CGEvent, CGEventField, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventTapLocation,
         CGEventTapOptions, CGEventTapPlacement, CGEventTapProxy, CGEventType,
     };
-    use objc2_foundation::{NSArray, NSString, NSURL};
+    use objc2_foundation::{NSArray, NSData, NSString, NSURL};
     use std::{
         cell::Cell,
         collections::HashSet,
@@ -606,6 +647,31 @@ mod mac {
         })
     }
 
+    // A number that changes with every copy.
+    pub fn clipboard_stamp() -> i64 {
+        autoreleasepool(|_| NSPasteboard::generalPasteboard().changeCount() as i64)
+    }
+
+    // The HTML as the copying app wrote it, kept only when it's UTF-8 so it can go back byte for byte.
+    pub fn clipboard_html() -> Option<String> {
+        autoreleasepool(|_| {
+            let data = unsafe { NSPasteboard::generalPasteboard().dataForType(NSPasteboardTypeHTML) }?;
+            String::from_utf8(data.to_vec()).ok()
+        })
+    }
+
+    // Puts text back with its HTML unchanged (arboard would wrap it in a second document).
+    pub fn set_html(text: &str, html: &str) -> bool {
+        autoreleasepool(|_| {
+            let pb = NSPasteboard::generalPasteboard();
+            pb.clearContents();
+            unsafe {
+                pb.setData_forType(Some(&NSData::with_bytes(html.as_bytes())), NSPasteboardTypeHTML)
+                    && pb.setString_forType(&NSString::from_str(text), NSPasteboardTypeString)
+            }
+        })
+    }
+
     fn expand_home(path: &str) -> String {
         match (path.strip_prefix("~/"), std::env::var("HOME")) {
             (Some(rest), Ok(home)) => format!("{home}/{rest}"),
@@ -749,6 +815,15 @@ mod other {
         false
     }
     pub fn paste_into(_target: isize) {}
+    pub fn clipboard_stamp() -> i64 {
+        0
+    }
+    pub fn clipboard_html() -> Option<String> {
+        None
+    }
+    pub fn set_html(_text: &str, _html: &str) -> bool {
+        false
+    }
     pub fn clipboard_is_sensitive() -> bool {
         false
     }
