@@ -76,6 +76,8 @@ struct AppState {
     cfg: Arc<RwLock<config::Config>>,
     config_dir: PathBuf,
     paused: Arc<AtomicBool>,
+    // False when the history couldn't be opened on disk and lives in memory until quit.
+    saved: bool,
     quiet_until: Arc<AtomicI64>,
     target: Mutex<isize>,
     placement: Mutex<Option<Placement>>,
@@ -473,6 +475,9 @@ struct Settings {
     config: config::Config,
     autostart: bool,
     paused: bool,
+    saved: bool,
+    // Whether stash may paste for you (Accessibility on macOS; always true elsewhere).
+    access: bool,
     version: String,
 }
 
@@ -482,6 +487,8 @@ fn get_settings(app: AppHandle, state: State<AppState>) -> Settings {
         config: state.cfg.read().unwrap_or_else(|e| e.into_inner()).clone(),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
         paused: state.paused.load(Ordering::Relaxed),
+        saved: state.saved,
+        access: platform::can_paste(),
         version: app.package_info().version.to_string(),
     }
 }
@@ -557,8 +564,11 @@ impl Watcher {
                 if let Some(entry) = capture::read(&mut cb, &limits) {
                     if let Err(e) = self.db.add(&entry, now_ms(), cfg.max_items) {
                         eprintln!("stash: could not save clip: {e}");
-                    } else if let (true, Some(png)) = (cfg.ocr_images, entry.data) {
-                        let _ = self.ocr.send((entry.key, png));
+                    } else {
+                        let _ = self.app.emit("stash-clip", ());
+                        if let (true, Some(png)) = (cfg.ocr_images, entry.data) {
+                            let _ = self.ocr.send((entry.key, png));
+                        }
                     }
                 }
                 return;
@@ -765,6 +775,7 @@ pub fn run() {
                 cfg: cfg.clone(),
                 config_dir: dir.clone(),
                 paused: paused.clone(),
+                saved,
                 quiet_until: quiet_until.clone(),
                 target: Mutex::new(0),
                 placement: Mutex::new(None),

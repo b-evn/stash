@@ -112,9 +112,11 @@ and a capital letter makes a word case-sensitive.
 
 Filters turn into chips as you type them. Combine freely: `@code !test fetch`.
 
-The gear in the footer opens the settings: shortcut, start at login, theme, what
-gets captured and how many clips to keep. They're saved to `config.json`, which
-you can also edit by hand; it applies as soon as you save.
+The gear in the footer opens the settings. They start with what stash is doing:
+capturing or paused, how many clips, and whether they're encrypted on disk. Then
+the shortcut, start at login, theme, a tile for each kind of clip that gets
+captured, and how many clips to keep. They're saved to `config.json`, which you
+can also edit by hand; it applies as soon as you save.
 
 ## Private by default
 
@@ -169,6 +171,6 @@ with demo data; the pictures here are that popup, redrawn by
 
 <p align="center">
   <img alt="stash" src="src-tauri/icons/128x128@2x.png" width="72"><br>
-  <sub>UI font: <a href="https://github.com/vercel/geist-font">Geist</a> (SIL OFL, <code>ui/fonts</code>). Icons: <a href="https://lucide.dev">Lucide</a> (ISC), except the theme sun and moon, which are drawn for stash.</sub><br>
+  <sub>UI font: <a href="https://github.com/vercel/geist-font">Geist</a> (SIL OFL, <code>ui/fonts</code>). Icons: drawn for stash.</sub><br>
   <sub>Backdrops, both public domain: Peter Paul Rubens, <i>The Fall of Phaeton</i> (c. 1604–08, National Gallery of Art, Washington) and Francisco Bayeu, <i>Olympus: The Battle of the Giants</i> (1764, Museo del Prado).</sub>
 </p>

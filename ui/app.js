@@ -13,61 +13,71 @@
   const MAX_ROWS = 200;
   const DAY = 864e5;
 
+  // stash's own glyphs: a 24 grid, 1.75 strokes with round ends (style.css keeps the drawn weight
+  // even at small sizes), corners of 3 to 3.5, and text as the stash mark's three bars, long to short.
+  // Parts named g-… make each glyph's small motion in style.css.
+  const DOT = (x, y, n) => `<path class="dot g-d${n}" d="M${x} ${y}h.01"/>`;
+  const FOLDER = '<path d="M3 17V7a3 3 0 0 1 3-3h2.9a2 2 0 0 1 1.66.89L11.5 6.5H18a3 3 0 0 1 3 3V17a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3Z"/>';
+  const PIN = '<path d="M8.5 3.5h7"/><path d="M10 3.5V9l-3.5 4.5h11L14 9V3.5"/><path d="M12 13.5v7"/>';
+  const STACK = '<path class="g-under" d="M7 6.5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2"/><rect class="g-card" x="4" y="9" width="16" height="11.5" rx="3"/>';
+  const GEAR = 'M9.57 5.97L9.92 2.99A9.25 9.25 0 0 1 14.08 2.99L14.43 5.97A6.5 6.5 0 0 1 16 6.88L18.77 5.69A9.25 9.25 0 0 1 20.85 9.3L18.44 11.1A6.5 6.5 0 0 1 18.44 12.9L20.85 14.7A9.25 9.25 0 0 1 18.77 18.31L16 17.12A6.5 6.5 0 0 1 14.43 18.03L14.08 21.01A9.25 9.25 0 0 1 9.92 21.01L9.57 18.03A6.5 6.5 0 0 1 8 17.12L5.23 18.31A9.25 9.25 0 0 1 3.15 14.7L5.56 12.9A6.5 6.5 0 0 1 5.56 11.1L3.15 9.3A9.25 9.25 0 0 1 5.23 5.69L8 6.88A6.5 6.5 0 0 1 9.57 5.97Z';
   const ICON = {
-    text: '<path d="M17 6.1H3"/><path d="M21 12.1H3"/><path d="M15.1 18H3"/>',
-    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
-    code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
-    email: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
-    number: '<line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/>',
-    path: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
-    color: '<circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
-    file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
-    files: '<path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/>',
-    image: '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
-    pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
-    pinOff: '<path d="M12 17v5"/><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89"/><path d="m2 2 20 20"/><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11"/>',
-    trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
-    sort: '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>',
-    contrast: '<circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/>',
+    text: '<path class="g-b1" d="M4 6h16"/><path class="g-b2" d="M4 12h12.5"/><path class="g-b3" d="M4 18h8.5"/>',
+    link: '<path class="g-l1" d="M11 6.5 12.5 5a4.24 4.24 0 0 1 6 6L17 12.5"/><path class="g-l2" d="M13 17.5 11.5 19a4.24 4.24 0 0 1-6-6L7 11.5"/><path d="m9.5 14.5 5-5"/>',
+    code: '<path class="g-cl" d="M7.5 8 3.5 12l4 4"/><path class="g-cr" d="m16.5 8 4 4-4 4"/><path class="g-sl" d="m13.25 6.5-2.5 11"/>',
+    email: '<rect x="3" y="5" width="18" height="14" rx="3.5"/><path class="g-flap" d="m4 8 6.8 4.6a2.2 2.2 0 0 0 2.4 0L20 8"/>',
+    number: '<path d="M4.5 9h15"/><path d="M4.5 15h15"/><g class="g-slant"><path d="M10 4 8 20"/><path d="m16 4-2 16"/></g>',
+    path: `<g class="g-lift">${FOLDER}</g>`,
+    color: '<path d="M12 3.5a8.5 8.5 0 0 0 0 17c1 0 1.7-.7 1.7-1.6 0-.5-.2-.9-.5-1.2a1.7 1.7 0 0 1 1.3-2.8H17a3.5 3.5 0 0 0 3.5-3.5c0-4.4-3.8-7.9-8.5-7.9Z"/>' + DOT(7.5, 12, 1) + DOT(9, 8, 2) + DOT(13.5, 7, 3) + DOT(17, 9.5, 4),
+    file: '<path d="M14 3H8a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3V8Z"/><path class="g-fold" d="M14 3v3.5A1.5 1.5 0 0 0 15.5 8H19"/>',
+    files: '<g class="g-front"><path d="M16 6.5h-5a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-7.5Z"/><path d="M16 6.5V9a1.5 1.5 0 0 0 1.5 1.5H20"/></g><path class="g-back" d="M5 16V6a3 3 0 0 1 3-3h6"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="3.5"/><circle class="g-sun" cx="16.5" cy="8.5" r="1.5"/><path d="M3.5 17 7.6 12.9a2 2 0 0 1 2.8 0L17.5 20"/><path d="m12.4 14.9 1.7-1.7a2 2 0 0 1 2.8 0l3.8 3.8"/>',
+    pin: `<g class="g-press">${PIN}</g>`,
+    pinOff: '<g class="g-press"><path d="M8.5 3.5h7"/><path d="M10 3.5v4.1"/><path d="M8.3 11.3 6.5 13.5h5.1"/><path d="M15.4 13.5h2.1L14 9V3.5"/><path d="M12 15.4v5.1"/></g><path d="m3.5 3.5 17 17"/>',
+    trash: '<g class="g-lid"><path d="M4 6.5h16"/><path d="M9 6.5V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v1.5"/></g><path d="m6 6.5.8 11.7a3 3 0 0 0 3 2.8h4.4a3 3 0 0 0 3-2.8L18 6.5"/>',
+    sort: '<g class="g-up"><path d="M7.5 4v16"/><path d="M4 7.5 7.5 4 11 7.5"/></g><g class="g-down"><path d="M16.5 20V4"/><path d="m13 16.5 3.5 3.5 3.5-3.5"/></g>',
+    contrast: '<circle cx="12" cy="12" r="8.5"/><path class="g-half" d="M12 3.5a8.5 8.5 0 0 1 0 17Z" fill="currentColor"/>',
     // The theme icons are groups so style.css can animate their parts: a crescent
     // (circle r8.5 at 12,12 bitten by r7 at 16,8) with a twinkle in the bite, and a
     // round sun with short rays.
     dark: '<g class="moon"><path class="crescent" d="M10.53 3.63A8.5 8.5 0 1 0 20.37 13.47 7 7 0 0 1 10.53 3.63Z"/><path class="spark" d="M19.6 2.9v3M18.1 4.4h3" stroke-width="1.6"/></g>',
     light: '<g class="sun"><circle class="core" cx="12" cy="12" r="4.5"/><path class="rays" d="M12 2.25v2M12 19.75v2M2.25 12h2M19.75 12h2M5.11 5.11l1.41 1.41M18.89 5.11l-1.41 1.41M18.89 18.89l-1.41-1.41M5.11 18.89l1.41-1.41"/></g>',
-    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
-    clipboard: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
-    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-    ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
-    quote: '<path d="M17 6H3"/><path d="M21 12H8"/><path d="M21 18H8"/><path d="M3 12v6"/>',
-    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-    stack: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
-    stackAdd: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/>',
-    stackRemove: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M21 12h-6"/>',
-    external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
-    folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m10 10 4 4"/><path d="M14 10v4h-4"/>',
-    copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
-    check: '<path d="M20 6 9 17l-5-5"/>',
-    chevron: '<path d="m9 18 6-6-6-6"/>',
-    chart: '<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="5" width="3" height="13" rx="1"/>',
-    settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
-    back: '<path d="m15 18-6-6 6-6"/>',
-    keyboard: '<path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/>',
-    power: '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
-    pause: '<circle cx="12" cy="12" r="10"/><line x1="10" x2="10" y1="15" y2="9"/><line x1="14" x2="14" y1="15" y2="9"/>',
-    scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/>',
-    camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
-    key: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
-    lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-    bank: '<path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4z"/>',
-    card: '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>',
-    db: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
-    history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+    search: '<g class="g-peer"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/></g>',
+    clipboard: '<path d="M8.5 4.5h-1a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h9a3 3 0 0 0 3-3V7.5a3 3 0 0 0-3-3h-1"/><rect class="g-clip" x="8.5" y="2.75" width="7" height="3.5" rx="1.5"/>',
+    x: '<g class="g-spin"><path d="m6.5 6.5 11 11"/><path d="m17.5 6.5-11 11"/></g>',
+    ban: '<circle cx="12" cy="12" r="8.5"/><path class="g-swing" d="m6 6 12 12"/>',
+    quote: '<g class="g-q1"><path d="M4.5 7H9v4.5H4.5Z"/><path d="M9 11.5c0 3-1.5 5-4.5 5.5"/></g><g class="g-q2"><path d="M14 7h4.5v4.5H14Z"/><path d="M18.5 11.5c0 3-1.5 5-4.5 5.5"/></g>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path class="g-hands" d="M12 7.5V12l3 2"/>',
+    stack: STACK,
+    stackAdd: STACK + '<g class="g-plus"><path d="M12 12.25v5"/><path d="M9.5 14.75h5"/></g>',
+    stackRemove: STACK + '<path class="g-minus" d="M9.5 14.75h5"/>',
+    external: '<path d="M19 13.5V17a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3h3.5"/><g class="g-out"><path d="M14 4h6v6"/><path d="m20 4-8.5 8.5"/></g>',
+    folder: FOLDER + '<g class="g-right"><path d="M9 13.5h6"/><path d="m12.5 11 2.5 2.5-2.5 2.5"/></g>',
+    copy: '<rect class="g-front" x="8.5" y="8.5" width="12" height="12" rx="3"/><path class="g-back" d="M15.5 5.5V5A1.5 1.5 0 0 0 14 3.5H6.5a3 3 0 0 0-3 3V14A1.5 1.5 0 0 0 5 15.5h.5"/>',
+    check: '<path class="g-tick" d="m5 12.5 4.5 4.5L19 7.5"/>',
+    chevron: '<path class="g-right" d="m9.5 6 6 6-6 6"/>',
+    chart: '<path class="g-c1" d="M6 20v-5"/><path class="g-c2" d="M12 20V10"/><path class="g-c3" d="M18 20V4"/>',
+    settings: `<g class="g-gear"><path d="${GEAR}"/><circle cx="12" cy="12" r="2.75"/></g>`,
+    back: '<path class="g-left" d="m14.5 6-6 6 6 6"/>',
+    keyboard: '<rect x="2.5" y="5.5" width="19" height="13" rx="3.5"/>' + DOT(7, 10, 1) + DOT(10.33, 10, 2) + DOT(13.67, 10, 3) + DOT(17, 10, 4) + '<path class="g-space" d="M8.5 14.5h7"/>',
+    power: '<path class="g-up" d="M12 3v8"/><path d="M7 6.2a8 8 0 1 0 10 0"/>',
+    pause: '<path class="g-p1" d="M9 5.5v13"/><path class="g-p2" d="M15 5.5v13"/>',
+    play: '<path class="g-right" d="M8 5.5v13l10.5-6.5Z"/>',
+    scan: '<g class="g-frame"><path d="M4 8V7a3 3 0 0 1 3-3h1"/><path d="M16 4h1a3 3 0 0 1 3 3v1"/><path d="M20 16v1a3 3 0 0 1-3 3h-1"/><path d="M8 20H7a3 3 0 0 1-3-3v-1"/></g><path class="g-b1" d="M8.5 10h7"/><path class="g-b2" d="M8.5 14h4.5"/>',
+    camera: '<path d="M3.5 9a3 3 0 0 1 3-3h1.5l1.4-2.1a1 1 0 0 1 .8-.4h3.6a1 1 0 0 1 .8.4L16 6h1.5a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-11a3 3 0 0 1-3-3Z"/><circle class="g-lens" cx="12" cy="12.8" r="3.4"/>',
+    key: '<g class="g-turn"><circle cx="8" cy="16" r="4.5"/><path d="M11.2 12.8 19.5 4.5"/><path d="m16.5 7.5 2.5 2.5"/><path d="m14 10 1.75 1.75"/></g>',
+    lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="3"/><path class="g-shackle" d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><path d="M12 14.5v2"/>',
+    bank: '<path class="g-roof" d="M4 9.5h16L12 4.5Z"/><path d="M4 20h16"/><path d="M7 12.5V17"/><path d="M12 12.5V17"/><path d="M17 12.5V17"/>',
+    card: '<g class="g-tilt"><rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="M3 10h18"/><path d="M7 14.5h3"/></g>',
+    db: '<ellipse class="g-top" cx="12" cy="6" rx="7.5" ry="2.5"/><path d="M4.5 6v12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5V6"/><path class="g-mid" d="M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/>',
+    history: '<g class="g-rewind"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 8.5"/><path d="M4 4.5v4h4"/></g><path class="g-unwind" d="M12 8v4l2.5 1.5"/>',
+    shield: '<path d="M12 3.5 5 6.2v5.3c0 4.2 2.9 7.5 7 9 4.1-1.5 7-4.8 7-9V6.2Z"/><path class="g-tick" d="m9 12 2.2 2.2 4.3-4.2"/>',
     // Keys drawn in menu keycaps.
-    command: '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>',
-    option: '<path d="M3 3h6l6 18h6"/><path d="M14 3h7"/>',
-    enter: '<path d="m9 10-5 5 5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>',
-    backspace: '<path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/>',
-    click: '<path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/>',
+    command: '<path class="g-press" d="M9 9H6.25A2.75 2.75 0 1 1 9 6.25v11.5A2.75 2.75 0 1 1 6.25 15h11.5A2.75 2.75 0 1 1 15 17.75V6.25A2.75 2.75 0 1 1 17.75 9Z"/>',
+    option: '<g class="g-press"><path d="M3.5 6h5l7 12h5"/><path d="M14 6h6.5"/></g>',
+    enter: '<path d="M19 5v6a3 3 0 0 1-3 3H5"/><path class="g-left" d="m9 10-4 4 4 4"/>',
+    backspace: '<path d="M9.3 5.5H18a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9.3a2 2 0 0 1-1.5-.7L3 12l4.8-5.8a2 2 0 0 1 1.5-.7Z"/><g class="g-spin2"><path d="m12 9.5 5 5"/><path d="m17 9.5-5 5"/></g>',
+    click: '<g class="g-rays"><path d="M8 3v2.5"/><path d="M3 8h2.5"/><path d="m4.5 4.5 1.75 1.75"/></g><path class="g-ptr" d="m9 9 11 4.5-4.6 1.9-1.9 4.6Z"/>',
   };
   const svg = (name) => `<svg class="icon" viewBox="0 0 24 24">${ICON[name]}</svg>`;
 
@@ -99,6 +109,8 @@
       capture_files: true, ocr_images: true, max_image_megapixels: 40, capture_screenshots: true },
     autostart: true,
     paused: false,
+    saved: params.get('saved') !== '0',
+    access: params.get('access') !== '0',
     version: '0.1.0',
   };
   let sort = store.get('sort', 'recent');
@@ -123,6 +135,7 @@
   const noFocusSteal = (b) => b.addEventListener('mousedown', (e) => e.preventDefault());
   const byId = (id) => clips.find((c) => c.id === id);
 
+  q.parentElement.insertAdjacentHTML('afterbegin', svg('search'));
   // The footer button holds both icons and swaps them by data-mode, so the change animates.
   themeBtn.innerHTML = `<svg class="icon theme-ico" viewBox="0 0 24 24">${ICON.light}${ICON.dark}</svg>`;
   const themeIco = themeBtn.firstChild;
@@ -1504,6 +1517,7 @@
   let prefs = null;
   let prefRows = [];
   let recording = null;
+  let mark = null;
 
   function fitCard() {
     run('fit_window', { height: Math.ceil(card.getBoundingClientRect().height) })
@@ -1568,7 +1582,7 @@
 
   async function loadPrefs() {
     try { prefs = await call('get_settings'); } catch (e) { console.error(e); }
-    if (!prefs) prefs = { config: { hotkey: 'Ctrl+Alt+V', max_items: 2000 }, autostart: false, paused: false, version: '' };
+    if (!prefs) prefs = { config: { hotkey: 'Ctrl+Alt+V', max_items: 2000 }, autostart: false, paused: false, saved: true, access: true, version: '' };
     $('version').textContent = prefs.version ? `v${prefs.version}` : '';
     buildPrefs();
   }
@@ -1819,13 +1833,110 @@
     return r;
   }
 
+  // What stash is doing: capturing or paused, how many clips, and whether they are encrypted on disk.
+  // Its mark's bars are the last clips, so a new copy drops in on top. On macOS a missing
+  // Accessibility permission shows here too, since without it stash can only copy.
+  function statusCard() {
+    const row = el('div', 'status');
+    const main = row.appendChild(el('div', 'status-main'));
+    mark = main.appendChild(el('span', 'mark', '<i></i><i></i><i></i>'));
+    const text = main.appendChild(el('span', 'status-text'));
+    const title = text.appendChild(el('span', 'status-title'));
+    const sub = text.appendChild(el('span', 'status-sub'));
+    const btn = main.appendChild(el('button', 'pbtn ctl'));
+    btn.addEventListener('click', () => setPaused(!prefs.paused));
+    const note = row.appendChild(el('div', 'status-note', `${svg('click')}<span>Pasting needs Accessibility access</span>`));
+    const allow = note.appendChild(el('button', 'pbtn ctl'));
+    allow.textContent = 'Allow…';
+    allow.title = 'Open System Settings → Privacy & Security → Accessibility';
+    allow.addEventListener('click', () => run('open_access_settings'));
+    const where = MAC ? 'this Mac' : 'this PC';
+    return {
+      row,
+      ctls: () => (note.hidden ? [btn] : [btn, allow]),
+      sync() {
+        row.classList.toggle('paused', prefs.paused);
+        title.textContent = prefs.paused ? 'Paused' : 'Capturing';
+        const count = `${clips.length.toLocaleString()} clip${clips.length === 1 ? '' : 's'}`;
+        sub.classList.toggle('bad', !prefs.saved);
+        sub.innerHTML = prefs.saved ? `${count} · ${svg('shield')}encrypted on ${where}` : `${count} · kept in memory until you quit`;
+        sub.title = prefs.saved ? `The key is in the ${MAC ? 'Keychain' : 'Credential Manager'}` : 'The keychain was locked or denied access, so nothing is written to disk';
+        btn.innerHTML = prefs.paused ? svg('play') + 'Resume' : svg('pause') + 'Pause';
+        btn.title = prefs.paused ? 'Capture new copies again' : 'Ignore new copies until you resume';
+        note.hidden = !MAC || prefs.access;
+      },
+    };
+  }
+
+  // A clip came in while the settings are open: the mark's bars move down to make room for it.
+  async function clipAdded() {
+    if (view !== 'prefs' || !prefs) return;
+    try { clips = await call('list_clips'); } catch { return; }
+    syncPrefs();
+    if (!mark) return;
+    mark.classList.remove('tick');
+    void mark.offsetWidth;
+    mark.classList.add('tick');
+  }
+
+  // What gets captured, one tile per kind of clip: a raised tile goes in. The line under
+  // the grid says what the tile under the pointer or focus does.
+  function captureTiles() {
+    const row = el('div', 'kinds');
+    const cap = el('div', 'kind-cap');
+    const c = () => prefs.config;
+    const idle = 'Text, links and code always go in.';
+    const kinds = [
+      { icon: 'text', label: 'Text', says: () => 'Text, links and code always go in, with their formatting.' },
+      { icon: 'image', label: 'Images', key: 'capture_images', says: () => 'Copied images, kept in full.' },
+      { icon: 'scan', label: 'Text in images', key: 'ocr_images', off: () => !c().capture_images,
+        says: () => (c().capture_images ? 'Recognized on this device, so screenshots are searchable.' : 'Needs Images.') },
+      { icon: 'file', label: 'Files', key: 'capture_files', says: () => 'Keeps the paths, not the files.' },
+      MAC && { icon: 'camera', label: 'Screenshots', key: 'capture_screenshots', says: () => '⌘⇧3, ⌘⇧4 and ⌘⇧5 also go on the clipboard.' },
+      // Stored the other way round, as ignore_sensitive.
+      { icon: 'key', label: 'Passwords', key: 'ignore_sensitive', invert: true,
+        says: () => `Copies password managers mark as private are ${c().ignore_sensitive ? 'skipped' : 'kept too'}.` },
+    ].filter(Boolean);
+    const tiles = kinds.map((k) => {
+      const b = row.appendChild(el('button', `kind ctl${k.key ? '' : ' fixed'}`, `${svg(k.icon)}<span>${k.label}</span>`));
+      b.dataset.grid = '';
+      b.addEventListener('click', async () => {
+        if (!k.key) return;
+        b.classList.remove('flip');
+        void b.offsetWidth;
+        b.classList.add('flip');
+        await savePref(k.key, !c()[k.key]);
+        cap.textContent = k.says();
+      });
+      const show = () => { cap.textContent = k.says(); };
+      b.addEventListener('pointerenter', show);
+      b.addEventListener('focus', show);
+      b.addEventListener('pointerleave', () => { if (document.activeElement !== b) cap.textContent = idle; });
+      b.addEventListener('blur', () => { cap.textContent = idle; });
+      return { b, k };
+    });
+    cap.textContent = idle;
+    return {
+      row,
+      after: cap,
+      ctls: () => tiles.map((t) => t.b),
+      sync() {
+        for (const { b, k } of tiles) {
+          b.setAttribute('aria-pressed', String(!k.key || Boolean(k.invert ? !c()[k.key] : c()[k.key])));
+          if (!k.key) b.setAttribute('aria-disabled', 'true');
+          b.disabled = Boolean(k.off && k.off());
+        }
+      },
+    };
+  }
+
   function buildPrefs() {
     prefsBody.textContent = '';
     prefsBody.appendChild(prefHl);
-    const flag = (key) => ({ get: () => prefs.config[key], set: (v) => savePref(key, v) });
     const short = (n) => (n >= 1000 ? `${n / 1000}k` : String(n));
     const keep = [...new Set([...KEEP, prefs.config.max_items])].filter(Boolean).sort((a, b) => a - b);
     const rows = [
+      statusCard(),
       'General',
       hotkeyRow(),
       switchRow({ icon: 'power', label: MAC ? 'Open at login' : 'Start with Windows', get: () => prefs.autostart, set: setAutostart }),
@@ -1835,12 +1946,7 @@
         get: () => theme, set: (t) => { setThemeTo(t); syncPrefs(); },
       }),
       'Capture',
-      switchRow({ icon: 'pause', label: 'Pause capturing', sub: 'New copies are ignored until you resume', get: () => prefs.paused, set: setPaused }),
-      switchRow({ icon: 'image', label: 'Images', ...flag('capture_images') }),
-      switchRow({ icon: 'scan', label: 'Text in images', sub: 'Recognized on this device, for search', ...flag('ocr_images'), disabled: () => !prefs.config.capture_images }),
-      switchRow({ icon: 'file', label: 'Files', sub: 'Keeps the paths, not the files', ...flag('capture_files') }),
-      MAC && switchRow({ icon: 'camera', label: 'Screenshots', sub: '⌘⇧3 and ⌘⇧4 also go on the clipboard', ...flag('capture_screenshots') }),
-      switchRow({ icon: 'key', label: 'Skip passwords', sub: 'Copies password managers mark as private', ...flag('ignore_sensitive') }),
+      captureTiles(),
       'History',
       segRow({
         icon: 'history', label: 'Keep', sub: 'Pinned clips don’t count',
@@ -1848,14 +1954,19 @@
         get: () => prefs.config.max_items, set: (n) => savePref('max_items', n),
       }),
       clearRow(),
-    ].filter(Boolean);
+    ];
     prefRows = [];
-    rows.forEach((r, i) => {
+    rows.flatMap((r) => (r.after ? [r, r.after] : [r])).forEach((r, i) => {
+      if (r instanceof Node) {
+        r.style.setProperty('--i', i);
+        prefsBody.appendChild(r);
+        return;
+      }
       const node = typeof r === 'string' ? el('div', 'group') : r.row;
       if (typeof r === 'string') node.textContent = r;
       else {
         prefRows.push(r);
-        node.addEventListener('pointerenter', () => placePrefHl(node));
+        if (node.classList.contains('set-row')) node.addEventListener('pointerenter', () => placePrefHl(node));
       }
       node.style.setProperty('--i', i);
       prefsBody.appendChild(node);
@@ -1887,15 +1998,29 @@
   function onPrefsKey(e) {
     const ctrl = e.ctrlKey || e.metaKey;
     if (e.key === 'Escape' || (ctrl && e.key === ',')) { e.preventDefault(); showView('home'); return; }
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const ctls = prefRows.map((r) => r.ctl).filter((c) => !c.disabled);
+    const ctls = prefRows.flatMap((r) => (r.ctls ? r.ctls() : [r.ctl])).filter((c) => !c.disabled);
     const i = ctls.indexOf(document.activeElement);
-    const down = e.key === 'ArrowDown';
-    const next = ctls[i < 0 ? (down ? 0 : ctls.length - 1) : clamp(i + (down ? 1 : -1), 0, ctls.length - 1)];
+    const cur = ctls[i];
+    const inGrid = (c) => c && 'grid' in c.dataset;
+    let next = null;
+    // ← → move along the capture tiles; ↑ ↓ move a row of three there, and between rows elsewhere.
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (!inGrid(cur)) return;
+      const n = ctls[i + (e.key === 'ArrowRight' ? 1 : -1)];
+      next = inGrid(n) ? n : null;
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const down = e.key === 'ArrowDown';
+      if (i < 0) next = ctls[down ? 0 : ctls.length - 1];
+      else if (inGrid(cur)) {
+        const tiles = ctls.filter(inGrid);
+        const t = tiles.indexOf(cur);
+        next = tiles[t + (down ? 3 : -3)] || ctls[clamp(down ? ctls.indexOf(tiles[tiles.length - 1]) + 1 : ctls.indexOf(tiles[0]) - 1, 0, ctls.length - 1)];
+      } else next = ctls[clamp(i + (down ? 1 : -1), 0, ctls.length - 1)];
+    } else return;
+    e.preventDefault();
     if (!next) return;
     next.focus({ preventScroll: true });
-    const row = next.closest('.set-row');
+    const row = next.closest('.set-row, .kinds, .status');
     const prev = row.previousElementSibling;
     const top = prev && prev.classList.contains('group') ? prev.offsetTop : row.offsetTop;
     if (top < prefsBody.scrollTop) prefsBody.scrollTop = top - 4;
@@ -1964,6 +2089,7 @@
   listen('stash-show', (e) => open(e && e.payload));
   listen('stash-view', (e) => showView(e.payload === 'settings' ? 'prefs' : 'home'));
   listen('stash-stack', (e) => setStack(e.payload));
+  listen('stash-clip', clipAdded);
   window.addEventListener('focus', () => {
     if (view === 'home') q.focus();
     else if (!prefsEl.contains(document.activeElement)) prefsBody.focus({ preventScroll: true });
