@@ -203,7 +203,8 @@ body.above { min-height: 100vh; display: flex; flex-direction: column; justify-c
 .item.expanded { align-items: flex-start; }
 .tile {
   position: relative; width: 31px; height: 31px; flex: none; border-radius: 8px;
-  display: grid; place-items: center;
+  /* One cell the size of the tile, so a tall thumbnail can't stretch it past the tile. */
+  display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center;
   background: var(--tile-bg); box-shadow: var(--tile-shadow); color: var(--muted-fg);
 }
 .item.sel .tile { color: var(--fg); }
