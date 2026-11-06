@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.png">
-  <img alt="stash: everything you copied, one keystroke away. The popup over a Baroque painting of the gods." src="docs/hero-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.webp">
+  <img alt="stash: everything you copied, one keystroke away. The popup over a Baroque painting of the gods." src="docs/hero-dark.webp">
 </picture>
 
 <p align="center">
@@ -30,8 +30,8 @@
 ## Everything goes in
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/kinds-light.png">
-  <img alt="Six kinds of clip: text, links, code, images, files and colours, each with its search filter." src="docs/kinds-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/kinds-light.webp">
+  <img alt="Six kinds of clip: text, links, code, images, files and colours, each with its search filter." src="docs/kinds-dark.webp">
 </picture>
 
 Text, links, code, images and files all go in, and
@@ -54,8 +54,8 @@ those too.
 ## Paste stack
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/stack-light.png">
-  <img alt="A paste stack of four clips over a payment form: each Cmd+V pastes the next clip into the next field." src="docs/stack-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/stack-light.webp">
+  <img alt="A paste stack of four clips over a payment form: each Cmd+V pastes the next clip into the next field." src="docs/stack-dark.webp">
 </picture>
 
 Made for forms. `Ctrl`-click clips in the order you need them, close the popup,
@@ -70,8 +70,8 @@ you to let go of V, then puts the next clip on the clipboard.
 ## Keys
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/keys-light.png">
-  <img alt="The main keys: Ctrl+Option+V opens, Enter pastes, Cmd+1 to 9 pastes a row, hold Shift to preview, Cmd-click stacks, Tab cycles kinds." src="docs/keys-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/keys-light.webp">
+  <img alt="The main keys: Ctrl+Option+V opens, Enter pastes, Cmd+1 to 9 pastes a row, hold Shift to preview, Cmd-click stacks, Tab cycles kinds." src="docs/keys-dark.webp">
 </picture>
 
 On macOS read `Ctrl` as `⌘` and `Alt` as `⌥`, except in the hotkey, which is
@@ -97,8 +97,8 @@ On macOS read `Ctrl` as `⌘` and `Alt` as `⌥`, except in the hotkey, which is
 ## Find anything
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/panels-light.png">
-  <img alt="Three popups: filter chips for files without logo, a code clip previewed with Shift held, and the settings page." src="docs/panels-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/panels-light.webp">
+  <img alt="Three popups: filter chips for files without logo, a code clip previewed with Shift held, and the settings page." src="docs/panels-dark.webp">
 </picture>
 
 Just type. Words match loosely (`ghb` finds *GitHub*), every word has to match,
@@ -119,8 +119,8 @@ you can also edit by hand; it applies as soon as you save.
 ## Private by default
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/secrets-light.png">
-  <img alt="Blurred secrets in the list, each row naming its kind: an IBAN, a Visa card, a GitHub token, a password revealed under the pointer, and a database URL." src="docs/secrets-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/secrets-light.webp">
+  <img alt="Blurred secrets in the list, each row naming its kind: an IBAN, a Visa card, a GitHub token, a password revealed under the pointer, and a database URL." src="docs/secrets-dark.webp">
 </picture>
 
 - **Secrets are blurred** in the list, so they stay hidden when you share your
