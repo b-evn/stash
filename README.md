@@ -36,6 +36,8 @@
 
 Text, links, code, images and files all go in, and
 everything stays on your computer.
+Text keeps the formatting it was copied with, so bold, links and tables from a
+browser or Word paste back as they were; `Alt+Enter` pastes plain text.
 Text inside screenshots is recognized on your machine, so you can search
 those too.
 
@@ -60,6 +62,7 @@ Made for forms. `Ctrl`-click clips in the order you need them, close the popup,
 and each plain `Ctrl+V` pastes the next one, in any app: email, Tab, `Ctrl+V`,
 IBAN, Tab, `Ctrl+V`…
 
+Stacked clips go in as plain text.
 The stack ends after its last clip, when you copy something
 yourself, or with the × in its bar. It never holds up your paste: it waits for
 you to let go of V, then puts the next clip on the clipboard.
@@ -78,6 +81,7 @@ On macOS read `Ctrl` as `⌘`, except in the hotkey, which is `⌃⌥V` on both.
 | `Ctrl+Alt+V` | open / close the popup (configurable) |
 | `Enter` | paste |
 | `Ctrl+1`…`9` | paste that row |
+| `Alt+Enter` | paste as plain text |
 | `Ctrl+Enter` | copy without pasting |
 | hold `Shift` | preview |
 | `Ctrl`+click | add to the paste stack |

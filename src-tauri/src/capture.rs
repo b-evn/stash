@@ -8,6 +8,8 @@ const MAX_VISUAL_BYTES: u64 = 20 * 1024 * 1024;
 const VISUAL_EXTS: &[&str] = &["svg", "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif", "ttf", "otf", "woff", "woff2"];
 /// Types only WebKit draws, so only macOS gets thumbnails of them.
 const WEBKIT_EXTS: &[&str] = &["tif", "tiff", "heic", "heif"];
+/// Largest formatting kept with a text clip; beyond it the clip keeps only its text.
+const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
 
 pub struct Limits {
     pub max_chars: usize,
@@ -29,6 +31,7 @@ pub fn text_entry(text: &str, limits: &Limits) -> Option<Entry> {
         kind: kind::detect(text).as_str().into(),
         text: text.into(),
         ocr_text: String::new(),
+        html: None,
         data: None,
         thumb: None,
         width: None,
@@ -48,6 +51,7 @@ pub fn files_entry(paths: &[String]) -> Option<Entry> {
         kind: "file".into(),
         text,
         ocr_text: String::new(),
+        html: None,
         data: None,
         thumb: None,
         width: None,
@@ -68,6 +72,7 @@ pub fn image_entry(width: u32, height: u32, rgba: &[u8], limits: &Limits) -> Opt
         kind: "image".into(),
         text: String::new(),
         ocr_text: String::new(),
+        html: None,
         bytes: png.len() as i64,
         thumb: encode_png(tw, th, &small),
         data: Some(png),
@@ -244,7 +249,9 @@ pub fn read(cb: &mut arboard::Clipboard, limits: &Limits) -> Option<Entry> {
         }
     }
     if let Ok(text) = cb.get_text() {
-        return text_entry(&text, limits);
+        let mut entry = text_entry(&text, limits)?;
+        entry.html = cb.get().html().ok().filter(|h| !h.trim().is_empty() && h.len() <= MAX_HTML_BYTES);
+        return Some(entry);
     }
     if limits.images {
         if let Ok(img) = cb.get_image() {
@@ -254,14 +261,18 @@ pub fn read(cb: &mut arboard::Clipboard, limits: &Limits) -> Option<Entry> {
     None
 }
 
-pub fn write(cb: &mut arboard::Clipboard, kind: &str, text: &str, data: Option<&[u8]>) -> Result<(), String> {
+/// Puts a clip back on the clipboard; text goes with its formatting when it has some.
+pub fn write(cb: &mut arboard::Clipboard, kind: &str, text: &str, data: Option<&[u8]>, html: Option<&str>) -> Result<(), String> {
     match kind {
         "image" => {
             let (w, h, rgba) = data.and_then(decode_png).ok_or("stored image is unreadable")?;
             cb.set_image(arboard::ImageData { width: w as usize, height: h as usize, bytes: Cow::Owned(rgba) })
         }
         "file" => cb.set().file_list(&text.lines().collect::<Vec<_>>()),
-        _ => cb.set_text(text),
+        _ => match html {
+            Some(html) => cb.set().html(html, Some(text)),
+            None => cb.set_text(text),
+        },
     }
     .map_err(|e| e.to_string())
 }

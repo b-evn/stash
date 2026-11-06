@@ -199,20 +199,22 @@ fn list_clips(state: State<AppState>) -> Result<Vec<Clip>, String> {
     state.db.list().map_err(|e| e.to_string())
 }
 
-fn put_on_clipboard(state: &AppState, id: i64) -> Result<(), String> {
+// `plain` leaves out the formatting text was copied with.
+fn put_on_clipboard(state: &AppState, id: i64, plain: bool) -> Result<(), String> {
     let p = state.db.payload(id).map_err(|e| e.to_string())?.ok_or("clip no longer exists")?;
     state.quiet_until.store(now_ms() + ECHO_MS, Ordering::Relaxed);
     let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-    capture::write(&mut cb, &p.kind, &p.text, p.data.as_deref())?;
+    let html = if plain { None } else { p.html.as_deref() };
+    capture::write(&mut cb, &p.kind, &p.text, p.data.as_deref(), html)?;
     state.db.mark_used(id, now_ms()).map_err(|e| e.to_string())
 }
 
 // Returns false when the clip could only be copied: stash isn't allowed to send the paste
 // (no Accessibility access on macOS), so the popup stays open to say so.
 #[tauri::command]
-fn paste_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<bool, String> {
+fn paste_clip(app: AppHandle, state: State<AppState>, id: i64, plain: Option<bool>) -> Result<bool, String> {
     stop_running_stack(&app);
-    put_on_clipboard(&state, id)?;
+    put_on_clipboard(&state, id, plain.unwrap_or(false))?;
     let target = *state.target.lock().unwrap();
     if target != 0 && !platform::can_paste() {
         return Ok(false);
@@ -243,9 +245,10 @@ fn stop_running_stack(app: &AppHandle) {
     }
 }
 
+// Stacks fill forms, so their clips go in as plain text.
 fn load_front(st: &AppState, s: &mut Stack) {
     while let Some(&id) = s.queue.front() {
-        if put_on_clipboard(st, id).is_ok() {
+        if put_on_clipboard(st, id, true).is_ok() {
             if s.watch.is_none() {
                 s.watch = platform::watch_pastes(st.pasted.clone());
             }
@@ -337,7 +340,7 @@ fn open_access_settings() {
 #[tauri::command]
 fn copy_clip(app: AppHandle, state: State<AppState>, id: i64) -> Result<(), String> {
     stop_running_stack(&app);
-    put_on_clipboard(&state, id)?;
+    put_on_clipboard(&state, id, false)?;
     hide_popup(&app);
     Ok(())
 }

@@ -11,6 +11,8 @@ pub struct Entry {
     pub kind: String,
     pub text: String,
     pub ocr_text: String,
+    /// The formatting the text was copied with, as HTML.
+    pub html: Option<String>,
     pub data: Option<Vec<u8>>,
     pub thumb: Option<Vec<u8>>,
     pub width: Option<u32>,
@@ -30,6 +32,8 @@ pub struct Clip {
     pub height: Option<u32>,
     pub thumb: Option<String>,
     pub pinned: bool,
+    /// Copied with formatting, so it can also be pasted as plain text.
+    pub rich: bool,
     pub uses: i64,
     pub created: i64,
     pub last_used: i64,
@@ -39,6 +43,7 @@ pub struct Payload {
     pub kind: String,
     pub text: String,
     pub data: Option<Vec<u8>>,
+    pub html: Option<String>,
 }
 
 pub struct Db {
@@ -64,6 +69,7 @@ impl Db {
                  kind      TEXT    NOT NULL,
                  text      TEXT    NOT NULL,
                  ocr_text  TEXT    NOT NULL DEFAULT '',
+                 html      TEXT,
                  data      BLOB,
                  thumb     BLOB,
                  width     INTEGER,
@@ -76,14 +82,8 @@ impl Db {
              );
              CREATE INDEX IF NOT EXISTS entries_last_used ON entries (last_used);",
         )?;
-        let has_ocr: i64 = conn.query_row(
-            "SELECT count(*) FROM pragma_table_info('entries') WHERE name = 'ocr_text'",
-            [],
-            |r| r.get(0),
-        )?;
-        if has_ocr == 0 {
-            conn.execute("ALTER TABLE entries ADD COLUMN ocr_text TEXT NOT NULL DEFAULT ''", [])?;
-        }
+        add_column(&conn, "ocr_text", "TEXT NOT NULL DEFAULT ''")?;
+        add_column(&conn, "html", "TEXT")?;
         Ok(Self { conn: Mutex::new(conn) })
     }
 
@@ -94,11 +94,11 @@ impl Db {
     pub fn add(&self, e: &Entry, now: i64, max_items: usize) -> rusqlite::Result<()> {
         let c = self.conn();
         c.execute(
-            "INSERT INTO entries (key, kind, text, ocr_text, data, thumb, width, height, bytes, created, last_used)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
-             ON CONFLICT(key) DO UPDATE SET last_used = excluded.last_used,
+            "INSERT INTO entries (key, kind, text, ocr_text, html, data, thumb, width, height, bytes, created, last_used)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
+             ON CONFLICT(key) DO UPDATE SET last_used = excluded.last_used, html = excluded.html,
                  ocr_text = CASE WHEN excluded.ocr_text <> '' THEN excluded.ocr_text ELSE ocr_text END",
-            params![e.key, e.kind, e.text, e.ocr_text, e.data, e.thumb, e.width, e.height, e.bytes, now],
+            params![e.key, e.kind, e.text, e.ocr_text, e.html, e.data, e.thumb, e.width, e.height, e.bytes, now],
         )?;
         c.execute(
             "DELETE FROM entries WHERE pinned = 0 AND id NOT IN
@@ -112,7 +112,7 @@ impl Db {
         let c = self.conn();
         let mut stmt = c.prepare(
             "SELECT id, kind, substr(text, 1, ?1), length(text), bytes, width, height, thumb,
-                    pinned, uses, created, last_used, ocr_text
+                    pinned, uses, created, last_used, ocr_text, html IS NOT NULL
              FROM entries ORDER BY last_used DESC, id DESC",
         )?;
         let rows = stmt.query_map(params![PREVIEW_CHARS], |r| {
@@ -130,6 +130,7 @@ impl Db {
                     format!("data:image/{mime};base64,{}", STANDARD.encode(b))
                 }),
                 pinned: r.get::<_, i64>(8)? != 0,
+                rich: r.get(13)?,
                 uses: r.get(9)?,
                 created: r.get(10)?,
                 last_used: r.get(11)?,
@@ -141,8 +142,8 @@ impl Db {
 
     pub fn payload(&self, id: i64) -> rusqlite::Result<Option<Payload>> {
         self.conn()
-            .query_row("SELECT kind, text, data FROM entries WHERE id = ?1", params![id], |r| {
-                Ok(Payload { kind: r.get(0)?, text: r.get(1)?, data: r.get(2)? })
+            .query_row("SELECT kind, text, data, html FROM entries WHERE id = ?1", params![id], |r| {
+                Ok(Payload { kind: r.get(0)?, text: r.get(1)?, data: r.get(2)?, html: r.get(3)? })
             })
             .optional()
     }
@@ -184,6 +185,15 @@ impl Db {
     }
 }
 
+fn add_column(conn: &Connection, name: &str, decl: &str) -> rusqlite::Result<()> {
+    let has: i64 =
+        conn.query_row("SELECT count(*) FROM pragma_table_info('entries') WHERE name = ?1", params![name], |r| r.get(0))?;
+    if has == 0 {
+        conn.execute_batch(&format!("ALTER TABLE entries ADD COLUMN {name} {decl}"))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,6 +204,7 @@ mod tests {
             kind: "text".into(),
             text: t.into(),
             ocr_text: String::new(),
+            html: None,
             data: None,
             thumb: None,
             width: None,
@@ -242,6 +253,7 @@ mod tests {
             kind: "image".into(),
             text: String::new(),
             ocr_text: "invoice total $4,200".into(),
+            html: None,
             data: Some(vec![1, 2, 3]),
             thumb: Some(vec![9]),
             width: Some(640),
@@ -265,6 +277,7 @@ mod tests {
             kind: "image".into(),
             text: String::new(),
             ocr_text: String::new(),
+            html: None,
             data: Some(vec![1]),
             thumb: None,
             width: Some(1),
@@ -287,6 +300,7 @@ mod tests {
             kind: "image".into(),
             text: String::new(),
             ocr_text: String::new(),
+            html: None,
             data: Some(vec![1]),
             thumb: None,
             width: Some(1),
@@ -341,6 +355,18 @@ mod tests {
         let c = &db.list().unwrap()[0];
         assert!(c.thumb.as_deref().unwrap().starts_with("data:image/jpeg;base64,"));
         assert_eq!((c.width, c.height), (Some(640), Some(480)));
+    }
+
+    #[test]
+    fn formatting_follows_the_latest_copy() {
+        let db = Db::in_memory().unwrap();
+        db.add(&Entry { html: Some("<b>hi</b>".into()), ..text("hi") }, 1, 10).unwrap();
+        let c = &db.list().unwrap()[0];
+        assert!(c.rich);
+        assert_eq!(db.payload(c.id).unwrap().unwrap().html.as_deref(), Some("<b>hi</b>"));
+        db.add(&text("hi"), 2, 10).unwrap();
+        let c = &db.list().unwrap()[0];
+        assert!(!c.rich && db.payload(c.id).unwrap().unwrap().html.is_none());
     }
 
     #[test]

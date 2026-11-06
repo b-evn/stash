@@ -64,6 +64,7 @@
     history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
     // Keys drawn in menu keycaps.
     command: '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>',
+    option: '<path d="M3 3h6l6 18h6"/><path d="M14 3h7"/>',
     enter: '<path d="m9 10-5 5 5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>',
     backspace: '<path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/>',
     click: '<path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/>',
@@ -755,8 +756,9 @@
     const noun = { image: 'image', file: 'files', link: 'link', code: 'code', color: 'colour', text: 'text' }[c.kind];
     const items = [
       { icon: 'clipboard', label: noun ? `Paste ${noun}` : 'Paste', keys: ['enter'], action: () => paste(c) },
+      c.rich && { icon: 'text', label: 'Paste as plain text', keys: ['alt', 'enter'], action: () => paste(c, true) },
       { icon: 'copy', label: noun ? `Copy ${noun}` : 'Copy', keys: ['mod', 'enter'], action: () => copyOnly(c) },
-    ];
+    ].filter(Boolean);
     let special = null;
     if (c.kind === 'link') {
       special = { icon: 'external', label: 'Open link', action: () => runThenHide('open_url', { id: c.id }) };
@@ -906,12 +908,13 @@
     if (focusFirst) setMenuActive(sub, 0);
   }
 
-  // A menu row's shortcut as outlined keycaps: ⌘, Return, Backspace and the
-  // click as icons, any other key (Ctrl on Windows too) by its name.
-  const KEY_ICON = { mod: MAC && 'command', enter: 'enter', backspace: 'backspace', click: 'click' };
+  // A menu row's shortcut as outlined keycaps: ⌘, ⌥, Return, Backspace and the
+  // click as icons, any other key (Ctrl and Alt on Windows too) by its name.
+  const KEY_ICON = { mod: MAC && 'command', alt: MAC && 'option', enter: 'enter', backspace: 'backspace', click: 'click' };
+  const KEY_NAME = { mod: 'Ctrl', alt: 'Alt' };
   function keycaps(keys) {
     const caps = el('span', 'menu-keys');
-    for (const k of keys) caps.appendChild(KEY_ICON[k] ? el('kbd', `ico ${k}`, svg(KEY_ICON[k])) : el('kbd', null, k === 'mod' ? 'Ctrl' : k));
+    for (const k of keys) caps.appendChild(KEY_ICON[k] ? el('kbd', `ico ${k}`, svg(KEY_ICON[k])) : el('kbd', null, KEY_NAME[k] || k));
     return caps;
   }
 
@@ -1361,7 +1364,8 @@
   }
 
   const run = (cmd, args) => Promise.resolve(call(cmd, args)).catch((e) => console.error(e));
-  const paste = (c) => run('paste_clip', { id: c.id }).then((pasted) => {
+  // `plain` leaves out the formatting a clip was copied with.
+  const paste = (c, plain = false) => run('paste_clip', { id: c.id, plain }).then((pasted) => {
     if (pasted === false) { noAccess = true; renderFooter(); }
   });
   const copyOnly = (c) => run('copy_clip', { id: c.id });
@@ -1423,6 +1427,7 @@
     else if (e.key === 'PageDown') move(6);
     else if (e.key === 'PageUp') move(-6);
     else if (e.key === 'Enter' && ctrl) { if (cur) copyOnly(cur); }
+    else if (e.key === 'Enter' && e.altKey) { if (cur) paste(cur, true); }
     else if (e.key === 'Enter') { if (stack.ids.length) pasteStack(); else if (cur) paste(cur); }
     else if (e.key === 'Escape') {
       if (q.value || chips.length) { q.value = ''; chips = []; refresh(); }
@@ -2026,7 +2031,7 @@
     return [
       c(1, 'link', 'https://github.com/b-evn/stash/issues/7', 1),
       c(2, 'image', '', 4, { thumb: dashboard, width: 2560, height: 1600, bytes: 412000, ocr_text: 'Q4 revenue dashboard\nARR $4.2M, up 18% year over year' }),
-      c(3, 'text', 'Hi Sam,\nAttached is the invoice for September. Let me know if anything looks off.\nBest, Ben', 9, { uses: 3 }),
+      c(3, 'text', 'Hi Sam,\nAttached is the invoice for September. Let me know if anything looks off.\nBest, Ben', 9, { uses: 3, rich: true }),
       c(4, 'file', 'C:\\Users\\ben\\Documents\\Invoices\\invoice-0923.pdf', 14, { bytes: 184320 }),
       c(5, 'code', 'const total = items.reduce((sum, i) => sum + i.price * i.qty, 0);\nreturn Math.round(total * 100) / 100;', 38, { uses: 5 }),
       c(6, 'email', 'billing@acme-industries.com', 75, { pinned: true, uses: 14 }),
