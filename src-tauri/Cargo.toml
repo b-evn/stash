@@ -115,6 +115,7 @@ objc2-vision = { version = "0.3", default-features = false, features = [
 [profile.release]
 opt-level = "s"
 lto = true
-codegen-units = 1
+# 16 rather than 1: half the build time for a binary about 1% larger.
+codegen-units = 16
 strip = true
 panic = "abort"

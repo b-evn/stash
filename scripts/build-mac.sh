@@ -11,7 +11,11 @@ target=
 [ "${1:-}" = --target ] && target=$2
 out=${CARGO_TARGET_DIR:-target}/${target:+$target/}release/bundle
 
-cargo tauri build --bundles app "$@"
+# The Tauri CLI as `cargo tauri` (cargo install tauri-cli), else `tauri` (npm, as CI uses).
+if command -v cargo-tauri >/dev/null 2>&1; then
+  tauri() { cargo tauri "$@"; }
+fi
+tauri build --bundles app "$@"
 
 app=$out/macos/stash.app
 plist=$app/Contents/Info.plist
@@ -31,6 +35,12 @@ ditto "$app" "$stage/stash.app"
 ln -s /Applications "$stage/Applications"
 mkdir -p "$out/dmg"
 dmg=$out/dmg/stash_${version}_$arch.dmg
-hdiutil create -volname stash -srcfolder "$stage" -format UDZO -ov "$dmg"
+# hdiutil now and then fails with "Resource busy" on CI runners, so it gets three tries.
+for try in 1 2 3; do
+  hdiutil create -volname stash -srcfolder "$stage" -format UDZO -ov "$dmg" && break
+  [ "$try" = 3 ] && exit 1
+  sync
+  sleep 5
+done
 echo "$app"
 echo "$dmg"

@@ -147,6 +147,7 @@ tools.
 
 ```sh
 cargo install tauri-cli --version "^2" --locked
+# or prebuilt, in seconds: npm install -g @tauri-apps/cli@2, then write `tauri` for `cargo tauri`
 cd src-tauri
 cargo tauri dev           # run
 cargo tauri build         # Windows: portable stash.exe + installer
