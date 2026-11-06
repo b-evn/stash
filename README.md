@@ -35,7 +35,7 @@
 </picture>
 
 Text, links, code, images and files all go in, and
-everything stays on your computer.
+everything stays on your computer, encrypted.
 Text keeps the formatting it was copied with, so bold, links and tables from a
 browser or Word paste back as they were; `Alt+Enter` pastes plain text.
 Text inside screenshots is recognized on your machine, so you can search
@@ -126,6 +126,11 @@ you can also edit by hand; it applies as soon as you save.
   screen: IBANs, card numbers, API tokens, passwords, private keys and URLs with
   a password in them. Each row names what it holds, such as
   *Visa card* or *GitHub token*; hover to read it. Pasting gives you the clip as it was copied.
+- **Encrypted on disk.** The history is a
+  [SQLCipher](https://www.zetetic.net/sqlcipher/) database (AES-256), and its
+  key lives in the macOS Keychain or Windows Credential Manager, never in a
+  file. Copies and backups of it are unreadable. It guards the history at rest,
+  not against software running as you.
 - **Password managers are respected.** Copies they mark as "exclude from
   history" (1Password, KeePassXC…) are never stored.
 - **Nothing leaves your computer.** Text in images is recognized by the OCR
@@ -135,8 +140,9 @@ you can also edit by hand; it applies as soon as you save.
 
 Every push to `main` builds both in GitHub Actions (artifacts `stash-windows`
 and `stash-macos`), so you don't need a local toolchain. To build it yourself
-you need Rust, on Windows 10 also the WebView2 runtime, on macOS the Xcode
-command line tools.
+you need Rust, on Windows also Strawberry Perl (for the OpenSSL that SQLCipher
+uses) and on Windows 10 the WebView2 runtime, on macOS the Xcode command line
+tools.
 
 ```sh
 cargo install tauri-cli --version "^2" --locked
@@ -150,7 +156,7 @@ On macOS drag `stash.app` to Applications. It isn't notarized, so allow the
 first launch under System Settings → Privacy & Security → Open Anyway, and give
 it **Accessibility** there so it can paste for you (without it, stash copies the
 clip and you press `⌘V`). `build-mac.sh` signs every build as the same app, so
-macOS keeps that permission.
+macOS keeps that permission and the Keychain access.
 
 Tests: `node ui/search.test.js`, `node ui/secrets.test.js` and
 `cd src-tauri && cargo test --lib`. `ui/index.html` opens in a plain browser

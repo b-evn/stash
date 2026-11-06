@@ -17,7 +17,10 @@ tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-ap
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
-rusqlite = { version = "0.32", features = ["bundled"] }
+# SQLCipher encrypts the history; on macOS it uses Apple's CommonCrypto.
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher"] }
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+getrandom = "0.3"
 arboard = "3"
 clipboard-master = "4"
 serde = { version = "1", features = ["derive"] }
@@ -26,6 +29,8 @@ png = "0.17"
 base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
+# Windows has no system crypto SQLCipher can use, so OpenSSL is built in (needs Perl to build).
+libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher-vendored-openssl"] }
 windows = { version = "0.61", features = [
     "Foundation",
     "Globalization",

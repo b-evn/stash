@@ -4,6 +4,7 @@ mod db;
 mod kind;
 mod ocr;
 mod platform;
+mod vault;
 
 use std::{
     collections::VecDeque,
@@ -638,7 +639,8 @@ fn watch_config(app: AppHandle, mut watch: config::Watch, live: Arc<RwLock<confi
     });
 }
 
-fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>) -> tauri::Result<()> {
+// `saved` is false when the history can't be written to disk, which the tooltip says.
+fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>, saved: bool) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
     let pause = CheckMenuItem::with_id(app, "pause", "Pause capturing", true, false, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
@@ -652,7 +654,7 @@ fn build_tray(app: &tauri::App, db: Arc<Db>, paused: Arc<AtomicBool>) -> tauri::
     app.manage(TrayChecks { pause: pause.clone(), autostart: autostart.clone() });
 
     let mut tray = TrayIconBuilder::new()
-        .tooltip("stash")
+        .tooltip(if saved { "stash" } else { "stash: history isn't saved, no access to its key in the keychain" })
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
@@ -744,7 +746,14 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let config_watch = config::Watch::new(&dir);
             let cfg = Arc::new(RwLock::new(config::load(&dir)));
-            let db = Arc::new(Db::open(&dir.join("clips.db"))?);
+            let (db, saved) = match vault::open(&dir, &vault::Keychain) {
+                Ok(db) => (db, true),
+                Err(e) => {
+                    eprintln!("stash: history is kept in memory only until quit, no access to its key: {e}");
+                    (Db::in_memory()?, false)
+                }
+            };
+            let db = Arc::new(db);
             let paused = Arc::new(AtomicBool::new(false));
             let quiet_until = Arc::new(AtomicI64::new(0));
             let (pasted, pastes) = channel::<()>();
@@ -773,7 +782,7 @@ pub fn run() {
                 let _ = std::fs::write(&first_run, b"");
             }
 
-            build_tray(app, db.clone(), paused.clone())?;
+            build_tray(app, db.clone(), paused.clone(), saved)?;
 
             let handle = app.handle().clone();
             thread::spawn(move || {

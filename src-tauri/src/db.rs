@@ -51,11 +51,14 @@ pub struct Db {
 }
 
 impl Db {
-    pub fn open(path: &Path) -> rusqlite::Result<Self> {
-        Self::init(Connection::open(path)?)
+    /// Opens the history encrypted with `key` (64 hex digits), see `vault`.
+    pub fn open(path: &Path, key: &str) -> rusqlite::Result<Self> {
+        let conn = Connection::open(path)?;
+        unlock(&conn, key)?;
+        Self::init(conn)
     }
 
-    #[cfg(test)]
+    /// A history that lives only as long as the process, for when its key is out of reach.
     pub fn in_memory() -> rusqlite::Result<Self> {
         Self::init(Connection::open_in_memory()?)
     }
@@ -183,6 +186,21 @@ impl Db {
         c.execute("DELETE FROM entries WHERE pinned = 0", [])?;
         c.execute_batch("VACUUM;")
     }
+}
+
+// The key has to be the first thing a connection is given. Asking for the cipher
+// afterwards makes sure SQLCipher is what's linked: plain SQLite ignores the key.
+pub(crate) fn unlock(conn: &Connection, key: &str) -> rusqlite::Result<()> {
+    let refuse = |why: &str| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE), Some(why.into()));
+    if key.len() != 64 || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(refuse("malformed database key"));
+    }
+    conn.execute_batch(&format!("PRAGMA key = \"x'{key}'\";"))?;
+    let cipher: Option<String> = conn.query_row("PRAGMA cipher_version", [], |r| r.get(0)).optional()?;
+    if cipher.is_none() {
+        return Err(refuse("SQLite was built without SQLCipher"));
+    }
+    Ok(())
 }
 
 fn add_column(conn: &Connection, name: &str, decl: &str) -> rusqlite::Result<()> {
