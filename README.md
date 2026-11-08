@@ -159,6 +159,18 @@ or paused, how many clips, whether they're encrypted), the shortcut, start at
 login, theme, which kinds get captured, and how many clips to keep. They're saved
 to `config.json`, which you can also edit by hand; it applies as soon as you save.
 
+<img src="docs/icons/bolt.svg" width="24" height="24" align="top">&nbsp;AI tools like Claude and Cursor can search the history too, once you turn
+on *Share with AI tools* in the settings. stash is their MCP server (`stash mcp`;
+*Connect an app* copies the entry they need) with four tools: `search`, `read`,
+`grep` and `copy`. Search takes the language above plus `"phrases"`, `a|b`,
+`/regex/`, `@since:3d`, `@before:2026-11-01`, `@site:github.com` and `@size>2k`,
+ranks by relevance, and sorts by recent, oldest, frequent, largest or smallest.
+Answers are short: one line per clip with its size in tokens, near-copies folded
+together, and large clips as an outline first (JSON shape, table columns,
+headings, functions, log errors) to read by line range or JSON path. Secrets
+reach them only as their name, such as ‹GitHub token›, and a search can't find
+a clip by its password. The settings show which tool last asked for what.
+
 <br>
 
 <a id="private-by-default"></a>
@@ -187,8 +199,9 @@ history at rest, not against software running as you.
 <img src="docs/icons/key.svg" width="24" height="24" align="top">&nbsp;Password managers are respected. Copies they mark as "exclude from history"
 (1Password, KeePassXC…) are never stored.
 
-<img src="docs/icons/cloudoff.svg" width="24" height="24" align="top">&nbsp;Nothing leaves your computer. Text in images is recognized by the OCR built
-into Windows and macOS. No account, no cloud.
+<img src="docs/icons/cloudoff.svg" width="24" height="24" align="top">&nbsp;Nothing leaves your computer unless you share it with an AI tool, and then
+only what that tool asks for. Text in images is recognized by the OCR built into
+Windows and macOS. No account, no cloud.
 
 <br>
 
