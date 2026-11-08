@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod kind;
 mod ocr;
+mod outline;
 mod platform;
 mod query;
 mod secrets;
