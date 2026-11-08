@@ -28,9 +28,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 png = "0.17"
 base64 = "0.22"
-# Secret patterns need lookaround, which only fancy-regex has.
+# For the MCP server: secret patterns need lookaround, which only fancy-regex has.
 regex = "1"
 fancy-regex = "0.14"
+similar = "2"
+dirs = "6"
 
 [target.'cfg(windows)'.dependencies]
 # Windows has no system crypto SQLCipher can use, so OpenSSL is built in (needs Perl to build).

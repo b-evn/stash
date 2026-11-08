@@ -64,6 +64,8 @@ impl Db {
     }
 
     fn init(conn: Connection) -> rusqlite::Result<Self> {
+        // The app and the MCP server can have the history open at once.
+        conn.busy_timeout(std::time::Duration::from_secs(3))?;
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
              CREATE TABLE IF NOT EXISTS entries (
@@ -83,7 +85,14 @@ impl Db {
                  created   INTEGER NOT NULL,
                  last_used INTEGER NOT NULL
              );
-             CREATE INDEX IF NOT EXISTS entries_last_used ON entries (last_used);",
+             CREATE INDEX IF NOT EXISTS entries_last_used ON entries (last_used);
+             CREATE TABLE IF NOT EXISTS ai_log (
+                 id     INTEGER PRIMARY KEY,
+                 at     INTEGER NOT NULL,
+                 client TEXT    NOT NULL,
+                 tool   TEXT    NOT NULL,
+                 detail TEXT    NOT NULL
+             );",
         )?;
         add_column(&conn, "ocr_text", "TEXT NOT NULL DEFAULT ''")?;
         add_column(&conn, "html", "TEXT")?;
@@ -191,7 +200,93 @@ impl Db {
     pub fn clear_unpinned(&self) -> rusqlite::Result<()> {
         let c = self.conn();
         c.execute("DELETE FROM entries WHERE pinned = 0", [])?;
+        c.execute("DELETE FROM ai_log", [])?;
         c.execute_batch("VACUUM;")
+    }
+
+    /// Every clip with its whole text, newest first, one at a time.
+    pub fn scan(&self, mut f: impl FnMut(Row)) -> rusqlite::Result<()> {
+        let c = self.conn();
+        let mut stmt = c.prepare(&format!("{ROW_SELECT} ORDER BY last_used DESC, id DESC"))?;
+        let mut rows = stmt.query([])?;
+        while let Some(r) = rows.next()? {
+            f(Row::from(r)?);
+        }
+        Ok(())
+    }
+
+    pub fn row(&self, id: i64) -> rusqlite::Result<Option<Row>> {
+        self.conn().query_row(&format!("{ROW_SELECT} WHERE id = ?1"), params![id], Row::from).optional()
+    }
+
+    pub fn image_data(&self, id: i64) -> rusqlite::Result<Option<Vec<u8>>> {
+        self.conn().query_row("SELECT data FROM entries WHERE id = ?1", params![id], |r| r.get(0)).optional().map(Option::flatten)
+    }
+
+    pub fn count(&self) -> rusqlite::Result<i64> {
+        self.conn().query_row("SELECT count(*) FROM entries", [], |r| r.get(0))
+    }
+
+    /// Notes what an AI tool asked for, keeping the last few hundred.
+    pub fn log_access(&self, at: i64, client: &str, tool: &str, detail: &str) -> rusqlite::Result<()> {
+        let c = self.conn();
+        c.execute("INSERT INTO ai_log (at, client, tool, detail) VALUES (?1, ?2, ?3, ?4)", params![at, client, tool, detail])?;
+        c.execute("DELETE FROM ai_log WHERE id <= (SELECT max(id) FROM ai_log) - 300", [])?;
+        Ok(())
+    }
+
+    pub fn access_log(&self, limit: usize) -> rusqlite::Result<Vec<Access>> {
+        let c = self.conn();
+        let mut stmt = c.prepare("SELECT at, client, tool, detail FROM ai_log ORDER BY id DESC LIMIT ?1")?;
+        let rows = stmt.query_map(params![limit as i64], |r| {
+            Ok(Access { at: r.get(0)?, client: r.get(1)?, tool: r.get(2)?, detail: r.get(3)? })
+        })?;
+        rows.collect()
+    }
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Access {
+    pub at: i64,
+    pub client: String,
+    pub tool: String,
+    pub detail: String,
+}
+
+/// A clip as the MCP server reads it: everything but the image bytes.
+#[derive(Clone, Debug)]
+pub struct Row {
+    pub id: i64,
+    pub kind: String,
+    pub text: String,
+    pub ocr_text: String,
+    /// The start of the copied formatting, where Windows says which page it came from.
+    pub html_head: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub pinned: bool,
+    pub uses: i64,
+    pub created: i64,
+    pub last_used: i64,
+}
+
+const ROW_SELECT: &str = "SELECT id, kind, text, ocr_text, substr(html, 1, 1024), width, height, pinned, uses, created, last_used FROM entries";
+
+impl Row {
+    fn from(r: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Row {
+            id: r.get(0)?,
+            kind: r.get(1)?,
+            text: r.get(2)?,
+            ocr_text: r.get(3)?,
+            html_head: r.get(4)?,
+            width: r.get(5)?,
+            height: r.get(6)?,
+            pinned: r.get::<_, i64>(7)? != 0,
+            uses: r.get(8)?,
+            created: r.get(9)?,
+            last_used: r.get(10)?,
+        })
     }
 }
 

@@ -19,6 +19,8 @@ pub struct Config {
     pub ocr_images: bool,
     pub max_image_megapixels: u32,
     pub capture_screenshots: bool,
+    /// Lets AI tools search and read the history through `stash mcp`.
+    pub ai_access: bool,
 }
 
 impl Default for Config {
@@ -33,8 +35,14 @@ impl Default for Config {
             ocr_images: true,
             max_image_megapixels: 40,
             capture_screenshots: true,
+            ai_access: false,
         }
     }
+}
+
+/// The saved settings, without writing defaults when there are none.
+pub fn peek(dir: &Path) -> Option<Config> {
+    serde_json::from_str(&fs::read_to_string(dir.join(FILE_NAME)).ok()?).ok()
 }
 
 pub fn load(dir: &Path) -> Config {

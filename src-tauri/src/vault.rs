@@ -106,6 +106,22 @@ pub fn open(dir: &Path, keys: &impl Keys) -> Result<Db, String> {
     }
 }
 
+/// Opens the history the app already set up, for the MCP server: never makes a
+/// key, encrypts or moves files. Those are the app's to do.
+pub fn open_existing(dir: &Path) -> Result<Db, String> {
+    let f = Files::new(dir);
+    let not_yet = "stash's history isn't set up on this computer yet; open stash once, then try again";
+    if !f.db.exists() || is_plaintext(&f.db)? {
+        return Err(not_yet.into());
+    }
+    let key = Keychain.get()?.ok_or(not_yet)?;
+    let key = key.trim();
+    if !well_formed(key) {
+        return Err("the keychain item for the history doesn't hold a key stash can read".into());
+    }
+    Db::open(&f.db, &key.to_ascii_lowercase()).map_err(|e| format!("can't open the history: {e}"))
+}
+
 fn well_formed(key: &str) -> bool {
     key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit())
 }

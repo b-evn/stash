@@ -29,7 +29,7 @@ pub fn text_key(text: &str) -> String {
     let body = lf.trim_end();
     let lead = body.len() - body.trim_start().len();
     let start = body[..lead].rfind('\n').map_or(0, |n| n + 1);
-    format!("t:{:016x}", fnv(body[start..].as_bytes()))
+    format!("t:{:016x}", fnv(&body.as_bytes()[start..]))
 }
 
 pub fn text_entry(text: &str, limits: &Limits) -> Option<Entry> {

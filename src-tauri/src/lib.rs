@@ -2,12 +2,21 @@ mod capture;
 mod config;
 mod db;
 mod kind;
+mod mcp;
 mod ocr;
 mod outline;
 mod platform;
 mod query;
 mod secrets;
 mod vault;
+
+/// Names stash's folder and keychain item.
+pub const APP_ID: &str = "app.stash.clipboard";
+
+/// `stash mcp`: serves the history to AI tools over stdio, without the app's window or tray.
+pub fn run_mcp() -> i32 {
+    mcp::run()
+}
 
 use std::{
     collections::VecDeque,
@@ -482,6 +491,10 @@ struct Settings {
     // Whether stash may paste for you (Accessibility on macOS; always true elsewhere).
     access: bool,
     version: String,
+    /// How an AI tool starts stash's MCP server: this program, with `mcp`.
+    mcp_command: String,
+    /// What AI tools asked for lately, newest first.
+    ai_log: Vec<db::Access>,
 }
 
 #[tauri::command]
@@ -493,6 +506,8 @@ fn get_settings(app: AppHandle, state: State<AppState>) -> Settings {
         saved: state.saved,
         access: platform::can_paste(),
         version: app.package_info().version.to_string(),
+        mcp_command: std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
+        ai_log: state.db.access_log(5).unwrap_or_default(),
     }
 }
 
