@@ -87,6 +87,11 @@ impl Db {
         )?;
         add_column(&conn, "ocr_text", "TEXT NOT NULL DEFAULT ''")?;
         add_column(&conn, "html", "TEXT")?;
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version < 1 {
+            fold_text_duplicates(&conn)?;
+            conn.execute_batch("PRAGMA user_version = 1;")?;
+        }
         Ok(Self { conn: Mutex::new(conn) })
     }
 
@@ -100,7 +105,8 @@ impl Db {
             "INSERT INTO entries (key, kind, text, ocr_text, html, data, thumb, width, height, bytes, created, last_used)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
              ON CONFLICT(key) DO UPDATE SET last_used = excluded.last_used,
-                 html = COALESCE(excluded.html, html),
+                 text = excluded.text, kind = excluded.kind, bytes = excluded.bytes,
+                 html =COALESCE(excluded.html, html),
                  ocr_text = CASE WHEN excluded.ocr_text <> '' THEN excluded.ocr_text ELSE ocr_text END",
             params![e.key, e.kind, e.text, e.ocr_text, e.html, e.data, e.thumb, e.width, e.height, e.bytes, now],
         )?;
@@ -204,6 +210,47 @@ pub(crate) fn unlock(conn: &Connection, key: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Rekeys text clips with `capture::text_key` and merges the ones that now share
+/// a key, keeping the newest copy with the earliest date, total uses and any pin.
+fn fold_text_duplicates(conn: &Connection) -> rusqlite::Result<()> {
+    let rows: Vec<(i64, String, String)> = {
+        let mut stmt =
+            conn.prepare("SELECT id, key, text FROM entries WHERE key LIKE 't:%' ORDER BY last_used DESC, id DESC")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    let mut groups: Vec<(String, Vec<(i64, String)>)> = Vec::new();
+    let mut index = std::collections::HashMap::new();
+    for (id, old, text) in rows {
+        let key = crate::capture::text_key(&text);
+        let i = *index.entry(key.clone()).or_insert_with(|| {
+            groups.push((key, Vec::new()));
+            groups.len() - 1
+        });
+        groups[i].1.push((id, old));
+    }
+    let tx = conn.unchecked_transaction()?;
+    for (key, rows) in &groups {
+        let (keep, old) = &rows[0];
+        for (id, _) in &rows[1..] {
+            tx.execute(
+                "UPDATE entries SET
+                     pinned  = max(pinned, (SELECT pinned FROM entries WHERE id = ?2)),
+                     uses    = uses + (SELECT uses FROM entries WHERE id = ?2),
+                     created = min(created, (SELECT created FROM entries WHERE id = ?2)),
+                     html    = COALESCE(html, (SELECT html FROM entries WHERE id = ?2))
+                 WHERE id = ?1",
+                params![keep, id],
+            )?;
+            tx.execute("DELETE FROM entries WHERE id = ?1", params![id])?;
+        }
+        if old != key {
+            tx.execute("UPDATE entries SET key = ?2 WHERE id = ?1", params![keep, key])?;
+        }
+    }
+    tx.commit()
+}
+
 fn add_column(conn: &Connection, name: &str, decl: &str) -> rusqlite::Result<()> {
     let has: i64 =
         conn.query_row("SELECT count(*) FROM pragma_table_info('entries') WHERE name = ?1", params![name], |r| r.get(0))?;
@@ -241,6 +288,47 @@ mod tests {
         let l = db.list().unwrap();
         assert_eq!(l.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["a", "b"]);
         assert_eq!((l[0].created, l[0].last_used), (1, 3));
+    }
+
+    #[test]
+    fn near_copies_count_as_the_same_clip() {
+        let key = crate::capture::text_key;
+        assert_eq!(key("foo"), key("foo\n"));
+        assert_eq!(key("a\r\nb"), key("a\nb  \n"));
+        assert_eq!(key("\n\n    indented"), key("    indented"));
+        assert_ne!(key("    indented"), key("indented"));
+        assert_ne!(key("Foo"), key("foo"));
+        let db = Db::in_memory().unwrap();
+        let entry = |t: &str| Entry { key: key(t), ..text(t) };
+        db.add(&entry("foo"), 1, 10).unwrap();
+        db.add(&entry("bar"), 2, 10).unwrap();
+        db.add(&entry("foo\r\n"), 3, 10).unwrap();
+        let l = db.list().unwrap();
+        assert_eq!(l.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["foo\r\n", "bar"]);
+    }
+
+    #[test]
+    fn existing_near_copies_are_folded_once() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE entries (
+                 id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, text TEXT NOT NULL,
+                 ocr_text TEXT NOT NULL DEFAULT '', html TEXT, data BLOB, thumb BLOB, width INTEGER, height INTEGER,
+                 bytes INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0,
+                 created INTEGER NOT NULL, last_used INTEGER NOT NULL);
+             INSERT INTO entries (key, kind, text, bytes, pinned, uses, created, last_used) VALUES
+                 ('t:old1', 'text', 'foo', 3, 1, 2, 1, 1),
+                 ('t:old2', 'text', 'bar', 3, 0, 0, 2, 2),
+                 ('t:old3', 'text', 'foo' || char(10), 4, 0, 3, 3, 3);",
+        )
+        .unwrap();
+        let db = Db::init(conn).unwrap();
+        let l = db.list().unwrap();
+        assert_eq!(l.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["foo\n", "bar"]);
+        assert_eq!((l[0].pinned, l[0].uses, l[0].created, l[0].last_used), (true, 5, 1, 3));
+        let foo = Entry { key: crate::capture::text_key("foo"), ..text("foo") };
+        db.add(&foo, 4, 10).unwrap();
+        assert_eq!(db.list().unwrap().len(), 2);
     }
 
     #[test]

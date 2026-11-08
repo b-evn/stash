@@ -49,6 +49,8 @@
 Everything stays on your computer, encrypted. Text pastes back with the
 formatting it was copied with; `Alt+Enter` pastes it plain. Text inside
 screenshots is recognized on your machine, so you can search those too.
+Copying something that's already there moves it to the top instead of adding
+it twice, even if only its line endings or trailing spaces differ.
 
 <img src="docs/icons/eye.svg" width="24" height="24" align="top">&nbsp;Hold `Shift` to see an image larger or long text in full. Rows preview
 what they can't spell out: image files, SVG markup, data URLs, fonts, colours and

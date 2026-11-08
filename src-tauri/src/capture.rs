@@ -22,12 +22,22 @@ pub fn fnv(bytes: &[u8]) -> u64 {
     bytes.iter().fold(0xcbf29ce484222325, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3))
 }
 
+/// Text that differs only in line endings, trailing whitespace or leading blank
+/// lines is the same clip, so copying it again moves it up instead of adding a row.
+pub fn text_key(text: &str) -> String {
+    let lf = text.replace("\r\n", "\n").replace('\r', "\n");
+    let body = lf.trim_end();
+    let lead = body.len() - body.trim_start().len();
+    let start = body[..lead].rfind('\n').map_or(0, |n| n + 1);
+    format!("t:{:016x}", fnv(body[start..].as_bytes()))
+}
+
 pub fn text_entry(text: &str, limits: &Limits) -> Option<Entry> {
     if text.trim().is_empty() || text.chars().count() > limits.max_chars {
         return None;
     }
     Some(Entry {
-        key: format!("t:{:016x}", fnv(text.as_bytes())),
+        key: text_key(text),
         kind: kind::detect(text).as_str().into(),
         text: text.into(),
         ocr_text: String::new(),
