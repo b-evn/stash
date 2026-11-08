@@ -78,6 +78,8 @@
     enter: '<path d="M19 5v6a3 3 0 0 1-3 3H5"/><path class="g-left" d="m9 10-4 4 4 4"/>',
     backspace: '<path d="M9.3 5.5H18a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9.3a2 2 0 0 1-1.5-.7L3 12l4.8-5.8a2 2 0 0 1 1.5-.7Z"/><g class="g-spin2"><path d="m12 9.5 5 5"/><path d="m17 9.5-5 5"/></g>',
     click: '<g class="g-rays"><path d="M8 3v2.5"/><path d="M3 8h2.5"/><path d="m4.5 4.5 1.75 1.75"/></g><path class="g-ptr" d="m9 9 11 4.5-4.6 1.9-1.9 4.6Z"/>',
+    // A spark for AI tools: a four-point star with a small one beside it.
+    agent: '<path class="g-press" d="M10.5 4c.7 4.1 2.4 5.8 6.5 6.5-4.1.7-5.8 2.4-6.5 6.5-.7-4.1-2.4-5.8-6.5-6.5 4.1-.7 5.8-2.4 6.5-6.5Z"/><path class="g-rays" d="M18 15.5v4.5M15.75 17.75h4.5"/>',
   };
   const svg = (name) => `<svg class="icon" viewBox="0 0 24 24">${ICON[name]}</svg>`;
 
@@ -106,7 +108,9 @@
   let mockStack = null;
   const mockPrefs = {
     config: { hotkey: 'Ctrl+Alt+V', max_items: 2000, max_clip_chars: 100000, ignore_sensitive: true, capture_images: true,
-      capture_files: true, ocr_images: true, max_image_megapixels: 40, capture_screenshots: true },
+      capture_files: true, ocr_images: true, max_image_megapixels: 40, capture_screenshots: true, ai_access: false },
+    mcp_command: 'C:\\Program Files\\stash\\stash.exe',
+    ai_log: params.get('ai') ? [{ at: Date.now() - 120000, client: 'Claude Code', tool: 'search', detail: '"invoice @week"' }] : [],
     autostart: true,
     paused: false,
     saved: params.get('saved') !== '0',
@@ -1833,6 +1837,42 @@
     return r;
   }
 
+  // AI tools reach the history by running stash with `mcp`, which answers only once
+  // sharing is on. The setup row copies the entry MCP apps take, the last row says
+  // who asked for what lately.
+  function aiRows() {
+    const share = switchRow({
+      icon: 'agent', label: 'Share with AI tools', sub: 'Claude, Cursor and others can search your clips. Secrets stay hidden.',
+      get: () => Boolean(prefs.config.ai_access), set: (on) => savePref('ai_access', on),
+    });
+    const setup = rowShell('div', 'copy', 'Connect an app', 'Copies the MCP server entry for its settings');
+    const btn = setup.row.appendChild(el('button', 'pbtn ctl'));
+    btn.textContent = 'Copy';
+    btn.title = 'Copy {"mcpServers": {"stash": …}}';
+    let done = null;
+    btn.addEventListener('click', async () => {
+      const entry = { mcpServers: { stash: { command: prefs.mcp_command, args: ['mcp'] } } };
+      await run('copy_text', { text: JSON.stringify(entry, null, 2) });
+      btn.innerHTML = svg('check') + 'Copied';
+      clearTimeout(done);
+      done = setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
+    });
+    const connect = { row: setup.row, ctl: btn, subEl: setup.subEl, sync() { btn.disabled = !prefs.mcp_command; } };
+    const last = rowShell('div', 'clock', 'Last asked', '');
+    const said = (a) => `${a.client} · ${a.tool} ${a.detail} · ${age(a.at)}`;
+    const seen = {
+      row: last.row,
+      subEl: last.subEl,
+      ctls: () => [],
+      sync() {
+        const log = prefs.ai_log || [];
+        setSub(seen, log.length ? said(log[0]) : 'No AI tool has asked yet');
+        last.row.title = log.map(said).join('\n');
+      },
+    };
+    return [share, connect, seen];
+  }
+
   // What stash is doing: capturing or paused, how many clips, and whether they are encrypted on disk.
   // Its mark's bars are the last clips, so a new copy drops in on top. On macOS a missing
   // Accessibility permission shows here too, since without it stash can only copy.
@@ -1947,6 +1987,8 @@
       }),
       'Capture',
       captureTiles(),
+      'AI tools',
+      ...aiRows(),
       'History',
       segRow({
         icon: 'history', label: 'Keep', sub: 'Pinned clips don’t count',
