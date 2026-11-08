@@ -7,6 +7,9 @@
   //
   // Each check is narrow on purpose: a valid checksum, a known prefix, a name
   // that says password. Hiding ordinary text makes the blur noise.
+  //
+  // src-tauri/src/secrets.rs is a port of this for the MCP server, which hides
+  // the same secrets from AI tools. Keep the two in step.
   const TAIL = 4;
 
   // What a secret is: its name in the list and the icon its row gets.

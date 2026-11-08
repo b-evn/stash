@@ -27,6 +27,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.17"
 base64 = "0.22"
+# Secret patterns need lookaround, which only fancy-regex has.
+regex = "1"
+fancy-regex = "0.14"
 
 [target.'cfg(windows)'.dependencies]
 # Windows has no system crypto SQLCipher can use, so OpenSSL is built in (needs Perl to build).

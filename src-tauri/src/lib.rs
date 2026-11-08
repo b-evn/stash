@@ -4,6 +4,7 @@ mod db;
 mod kind;
 mod ocr;
 mod platform;
+mod secrets;
 mod vault;
 
 use std::{
