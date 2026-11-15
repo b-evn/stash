@@ -78,8 +78,9 @@
     enter: '<path d="M19 5v6a3 3 0 0 1-3 3H5"/><path class="g-left" d="m9 10-4 4 4 4"/>',
     backspace: '<path d="M9.3 5.5H18a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9.3a2 2 0 0 1-1.5-.7L3 12l4.8-5.8a2 2 0 0 1 1.5-.7Z"/><g class="g-spin2"><path d="m12 9.5 5 5"/><path d="m17 9.5-5 5"/></g>',
     click: '<g class="g-rays"><path d="M8 3v2.5"/><path d="M3 8h2.5"/><path d="m4.5 4.5 1.75 1.75"/></g><path class="g-ptr" d="m9 9 11 4.5-4.6 1.9-1.9 4.6Z"/>',
-    // An app: a window with its title bar.
+    // An app: a window with its title bar. "Aa" for the forms a clip can be pasted in.
     app: '<g class="g-lift"><rect x="3.5" y="4.5" width="17" height="15" rx="3.5"/><path d="M3.5 9h17"/></g>' + DOT(6.5, 6.75, 1) + DOT(9, 6.75, 2),
+    forms: '<g class="g-slant"><path d="m3.5 19 5-14 5 14"/><path d="M5.3 14h6.4"/></g><circle class="g-sun" cx="17.25" cy="15.5" r="3.25"/><path d="M20.5 12.25V19"/>',
     // A spark for AI tools: a four-point star with a small one beside it.
     agent: '<path class="g-press" d="M10.5 4c.7 4.1 2.4 5.8 6.5 6.5-4.1.7-5.8 2.4-6.5 6.5-.7-4.1-2.4-5.8-6.5-6.5 4.1-.7 5.8-2.4 6.5-6.5Z"/><path class="g-rays" d="M18 15.5v4.5M15.75 17.75h4.5"/>',
   };
@@ -785,11 +786,41 @@
     return items;
   }
 
-  function clipMenu(c) {
+  // Paste as…: one item per form, grouped. A hint shows the start of the result, unless
+  // the clip holds a secret the row blurs.
+  const FORM_ICON = { 0: 'scan', 1: 'link', 2: 'code', 3: 'text', 4: 'forms', 5: 'code', 6: 'text' };
+  function formItems(c, forms, hints = true) {
+    const quiet = secretsOf(c).length > 0;
+    const items = [];
+    forms.forEach((f, i) => {
+      if (i && f.group !== forms[i - 1].group) items.push(menuSep());
+      const hint = hints && !quiet ? f.hint : null;
+      items.push({ icon: FORM_ICON[f.group] || 'forms', label: f.label, hint, title: quiet ? null : f.hint, action: () => pasteAs(c, f.how) });
+    });
+    return items;
+  }
+
+  // Shift+Enter: how to paste the selected clip.
+  async function openPasteAs(c) {
+    const forms = await formsOf(c);
+    const row = listEl.querySelector('.item.sel');
+    if (view !== 'home' || !row || !results[sel] || results[sel].clip !== c) return;
+    const items = [
+      { icon: 'clipboard', label: 'As copied', action: () => paste(c) },
+      c.rich && { icon: 'text', label: 'Plain text', action: () => paste(c, true) },
+    ].filter(Boolean);
+    if (forms.length) items.push(menuSep(), ...formItems(c, forms));
+    else items.push({ icon: 'ban', label: 'No other forms for this clip', disabled: true });
+    const r = row.getBoundingClientRect();
+    openMenu(items, r.left + 10, r.bottom - 2, 'Paste as', { wide: true, active: 0 });
+  }
+
+  function clipMenu(c, forms = []) {
     const noun = { image: 'image', file: 'files', link: 'link', code: 'code', color: 'colour', text: 'text' }[c.kind];
     const items = [
       { icon: 'clipboard', label: noun ? `Paste ${noun}` : 'Paste', keys: ['enter'], action: () => paste(c) },
       c.rich && { icon: 'text', label: 'Paste as plain text', keys: ['alt', 'enter'], action: () => paste(c, true) },
+      forms.length && { icon: 'forms', label: 'Paste as', keys: ['shift', 'enter'], children: formItems(c, forms, false) },
       { icon: 'copy', label: noun ? `Copy ${noun}` : 'Copy', keys: ['mod', 'enter'], action: () => copyOnly(c) },
     ].filter(Boolean);
     let special = null;
@@ -951,7 +982,7 @@
   // A menu row's shortcut as outlined keycaps: ⌘, ⌥, Return, Backspace and the
   // click as icons, any other key (Ctrl and Alt on Windows too) by its name.
   const KEY_ICON = { mod: MAC && 'command', alt: MAC && 'option', enter: 'enter', backspace: 'backspace', click: 'click' };
-  const KEY_NAME = { mod: 'Ctrl', alt: 'Alt' };
+  const KEY_NAME = { mod: 'Ctrl', alt: 'Alt', shift: MAC ? '⇧' : 'Shift' };
   function keycaps(keys) {
     const caps = el('span', 'menu-keys');
     for (const k of keys) caps.appendChild(KEY_ICON[k] ? el('kbd', `ico ${k}`, svg(KEY_ICON[k])) : el('kbd', null, KEY_NAME[k] || k));
@@ -1114,13 +1145,15 @@
     clickGuard = null;
   }
 
-  // `opener` gets the focus back in the settings, where there's no search field.
-  function openMenu(items, x, y, label, { opener = null } = {}) {
+  // `wide` makes room for hints, `active` picks a row for the keyboard, and `opener`
+  // gets the focus back in the settings, where there's no search field.
+  function openMenu(items, x, y, label, { wide = false, active = -1, opener = null } = {}) {
     clearClickGuard();
     if (menuCtl) closeMenu(false, false);
     const panel = menuPanel(items, 0, null);
     const ctl = { panels: [panel], opener };
     menuCtl = ctl;
+    panel.root.classList.toggle('wide', wide);
     panel.root.setAttribute('aria-label', label || 'Actions');
     panel.root.style.maxHeight = 'none';
     document.body.appendChild(panel.root);
@@ -1165,6 +1198,7 @@
     window.addEventListener('blur', onMenuBlur);
     window.addEventListener('resize', onMenuResize);
     document.addEventListener('scroll', onMenuScroll, true);
+    if (active >= 0) setMenuActive(panel, active);
     if (view === 'home') q.focus();
   }
 
@@ -1407,9 +1441,12 @@
 
   const run = (cmd, args) => Promise.resolve(call(cmd, args)).catch((e) => console.error(e));
   // `plain` leaves out the formatting a clip was copied with.
-  const paste = (c, plain = false) => run('paste_clip', { id: c.id, plain }).then((pasted) => {
-    if (pasted === false) { noAccess = true; renderFooter(); }
-  });
+  // A paste that could only copy (no Accessibility access) keeps the popup open to say so.
+  const pasted = (ok) => { if (ok === false) { noAccess = true; renderFooter(); } };
+  const paste = (c, plain = false) => run('paste_clip', { id: c.id, plain }).then(pasted);
+  // Rows hold only the start of a clip, so the other forms come from the back end.
+  const formsOf = (c) => run('paste_choices', { id: c.id }).then((forms) => forms || []);
+  const pasteAs = (c, how) => run('paste_as', { id: c.id, how }).then(pasted);
 
   // Adds the app to Skip apps in the settings, so its copies stop going in.
   async function ignoreApp(name) {
@@ -1481,6 +1518,7 @@
     else if (e.key === 'PageUp') move(-6);
     else if (e.key === 'Enter' && ctrl) { if (cur) copyOnly(cur); }
     else if (e.key === 'Enter' && e.altKey) { if (cur) paste(cur, true); }
+    else if (e.key === 'Enter' && e.shiftKey) { if (cur) openPasteAs(cur); }
     else if (e.key === 'Enter') { if (stack.ids.length) pasteStack(); else if (cur) paste(cur); }
     else if (e.key === 'Escape') {
       if (q.value || chips.length) { q.value = ''; chips = []; refresh(); }
@@ -1499,7 +1537,7 @@
 
   q.addEventListener('input', () => { absorb(); refresh(); });
 
-  document.addEventListener('contextmenu', (e) => {
+  document.addEventListener('contextmenu', async (e) => {
     e.preventDefault();
     if (view !== 'home') return;
     if (menuCtl && menuCtl.panels.some((p) => p.root.contains(e.target))) return;
@@ -1512,7 +1550,8 @@
       const r = results[i];
       if (r) {
         select(i, false);
-        openMenu(clipMenu(r.clip), e.clientX, e.clientY, 'Clip actions');
+        const forms = await formsOf(r.clip);
+        openMenu(clipMenu(r.clip, forms), e.clientX, e.clientY, 'Clip actions');
         return;
       }
     }
@@ -2242,10 +2281,26 @@
       mockStack.ids = has ? mockStack.ids.filter((id) => id !== args.id) : [...mockStack.ids, args.id];
       if (!mockStack.ids.length) mockStack.done = 0;
     }
-    if (cmd === 'paste_clip') return Promise.resolve(!params.has('blocked'));
+    if (cmd === 'paste_clip' || cmd === 'paste_as') return Promise.resolve(!params.has('blocked'));
+    if (cmd === 'paste_choices') return Promise.resolve(demoForms(byId(args.id)));
     if (cmd === 'cancel_stack') mockStack = { ids: [], done: 0 };
     if (cmd === 'get_stack' || cmd === 'toggle_stack') return Promise.resolve({ ...mockStack, blocked: params.has('blocked') && mockStack.ids.length > 0 });
     return Promise.resolve();
+  }
+
+  // A few of the forms the back end offers (transform.rs), enough to show the menu.
+  function demoForms(c) {
+    if (!c) return [];
+    const first = (t) => t.split('\n').map((l) => l.trim()).find(Boolean) || '';
+    if (c.kind === 'image') return c.ocr_text ? [{ how: 'ocr', label: 'Text in image', hint: first(c.ocr_text), group: 0 }] : [];
+    const out = [];
+    if (c.kind === 'link' && c.text.includes('?')) out.push({ how: 'clean_url', label: 'Without tracking', hint: c.text.split('?')[0], group: 1 });
+    if (c.kind === 'text' && c.text.includes('\n')) out.push({ how: 'join', label: 'One line', hint: c.text.split(/\s+/).join(' '), group: 3 });
+    if (c.kind === 'text') {
+      out.push({ how: 'upper', label: 'UPPERCASE', hint: first(c.text).toUpperCase(), group: 4 });
+      out.push({ how: 'lower', label: 'lowercase', hint: first(c.text).toLowerCase(), group: 4 });
+    }
+    return out;
   }
 
   // Sources the demo hands out for its trip photos (7), logo file (12), copied icon (17), screenshot path (19) and data URL (20).

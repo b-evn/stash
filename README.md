@@ -60,6 +60,12 @@ CSS gradients.
 Finder, copy code as a fenced block or a colour as HEX, RGB or HSL. Right-click
 for the same in a menu.
 
+<img src="docs/icons/forms.svg" width="24" height="24" align="top">&nbsp;`Shift+Enter` pastes a clip in another form: the text in a screenshot, a
+link without its tracking, JSON laid out or compacted, lines trimmed, joined,
+sorted or without repeats, another case (UPPERCASE, Title Case, camelCase,
+snake_case…), or URL- and Base64-decoded text. Only the forms that change the
+clip are offered, each with a glimpse of the result.
+
 <img src="docs/icons/app.svg" width="24" height="24" align="top">&nbsp;Each clip remembers the app it was copied from, shown beside its age.
 Right-click it for *More from* that app or to *Skip* it, so its copies stop
 going in.
@@ -119,6 +125,7 @@ On macOS read `Ctrl` as `⌘` and `Alt` as `⌥`, except in the hotkey, which is
 | `Enter` | paste |
 | `Ctrl+1`…`9` | paste that row |
 | `Alt+Enter` | paste as plain text |
+| `Shift+Enter` | paste in another form |
 | `Ctrl+Enter` | copy without pasting |
 | hold `Shift` | preview |
 | `Ctrl`+click | add to the paste stack |

@@ -8,6 +8,7 @@ mod outline;
 mod platform;
 mod query;
 mod secrets;
+mod transform;
 mod vault;
 
 /// Names stash's folder and keychain item.
@@ -224,19 +225,43 @@ fn put_on_clipboard(state: &AppState, id: i64, plain: bool) -> Result<(), String
     state.db.mark_used(id, now_ms()).map_err(|e| e.to_string())
 }
 
-// Returns false when the clip could only be copied: stash isn't allowed to send the paste
-// (no Accessibility access on macOS), so the popup stays open to say so.
+// Pastes what is on the clipboard into the app the popup opened over. Returns false when
+// it could only be copied: stash isn't allowed to send the paste (no Accessibility access
+// on macOS), so the popup stays open to say so.
+fn paste_now(app: &AppHandle, state: &AppState) -> bool {
+    let target = *state.target.lock().unwrap();
+    if target != 0 && !platform::can_paste() {
+        return false;
+    }
+    hide_popup(app);
+    thread::spawn(move || platform::paste_into(target));
+    true
+}
+
 #[tauri::command]
 fn paste_clip(app: AppHandle, state: State<AppState>, id: i64, plain: Option<bool>) -> Result<bool, String> {
     stop_running_stack(&app);
     put_on_clipboard(&state, id, plain.unwrap_or(false))?;
-    let target = *state.target.lock().unwrap();
-    if target != 0 && !platform::can_paste() {
-        return Ok(false);
-    }
-    hide_popup(&app);
-    thread::spawn(move || platform::paste_into(target));
-    Ok(true)
+    Ok(paste_now(&app, &state))
+}
+
+/// The other forms a clip can be pasted in, for "Paste as…".
+#[tauri::command]
+fn paste_choices(state: State<AppState>, id: i64) -> Result<Vec<transform::Choice>, String> {
+    let row = state.db.row(id).map_err(|e| e.to_string())?.ok_or("clip no longer exists")?;
+    Ok(transform::choices(&row.kind, &row.text, &row.ocr_text))
+}
+
+// Pastes a clip in another form, as plain text. The form isn't kept as a clip of its own.
+#[tauri::command]
+fn paste_as(app: AppHandle, state: State<AppState>, id: i64, how: String) -> Result<bool, String> {
+    stop_running_stack(&app);
+    let row = state.db.row(id).map_err(|e| e.to_string())?.ok_or("clip no longer exists")?;
+    let text = transform::apply(&how, &row.kind, &row.text, &row.ocr_text).ok_or("this clip can't be pasted that way")?;
+    state.quiet_until.store(now_ms() + ECHO_MS, Ordering::Relaxed);
+    arboard::Clipboard::new().and_then(|mut c| c.set_text(text)).map_err(|e| e.to_string())?;
+    state.db.mark_used(id, now_ms()).map_err(|e| e.to_string())?;
+    Ok(paste_now(&app, &state))
 }
 
 fn stack_status(app: &AppHandle) -> StackStatus {
@@ -760,7 +785,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
-            list_clips, paste_clip, copy_clip, toggle_pin, delete_clip, hide_window, reveal_window, fit_window, toggle_stack,
+            list_clips, paste_clip, paste_choices, paste_as, copy_clip, toggle_pin, delete_clip, hide_window, reveal_window, fit_window, toggle_stack,
             paste_stack, cancel_stack, get_stack, open_access_settings, reveal_in_explorer, open_url, copy_text, copy_fence, visual_source,
             save_thumb, get_settings,
             set_config, set_autostart, set_paused, clear_history, reveal_config

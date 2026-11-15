@@ -318,6 +318,8 @@ footer::before { top: 0; }
   transition: opacity .14s var(--ease), transform .18s var(--spring);
 }
 .menu[data-level="1"] { width: min(160px, calc(100vw - 12px)); }
+/* Paste as: room for a glimpse of each form beside its name. */
+.menu.wide { width: min(272px, calc(100vw - 12px)); }
 .menu.on { opacity: 1; transform: none; }
 .menu.leaving { pointer-events: none; }
 .menu::-webkit-scrollbar { width: 8px; }
