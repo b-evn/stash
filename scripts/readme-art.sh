@@ -2,7 +2,7 @@
 # Redraws the README's pictures (docs/*-dark.webp, docs/*-light.webp) from docs/readme-art.html:
 # the real popup with its demo data, framed over the paintings in docs/art. The hero is animated and
 # recorded frame by frame by scripts/readme-anim.mjs. Needs python3, cwebp (brew install webp), Node 22+,
-# ffmpeg with libwebp and Google Chrome (set CHROME to use another Chromium). Run from
+# ffmpeg with libwebp (or img2webp, from webp) and Google Chrome (set CHROME to use another Chromium). Run from
 # anywhere: scripts/readme-art.sh, or name shots to redraw only those: scripts/readme-art.sh hero keys
 set -e
 ONLY=" $* "

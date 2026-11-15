@@ -1,8 +1,8 @@
 // Records an animated README picture: loads docs/readme-art.html?shot=<name>&theme=<theme> in headless
 // Chrome, steps the scene's clock with window.setT(seconds) and screenshots every frame, then packs the
-// frames into an animated WebP with ffmpeg. Scenes that animate define window.SCENE = { duration, fps }.
+// frames into an animated WebP with ffmpeg, or img2webp where ffmpeg has no WebP (Homebrew's). Scenes that animate define window.SCENE = { duration, fps }.
 //   node scripts/readme-anim.mjs hero dark docs/hero-dark.webp
-// Needs Node 22+, ffmpeg built with libwebp, and Chrome (CHROME to point at another Chromium).
+// Needs Node 22+, ffmpeg built with libwebp or img2webp (brew install webp), and Chrome (CHROME to point at another Chromium).
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -67,9 +67,13 @@ try {
   process.stdout.write('\n');
 
   const q = String(process.env.QUALITY || 82);
-  const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(scene.fps), '-i', join(tmp, 'f%04d.png'),
-    '-c:v', 'libwebp_anim', '-pix_fmt', 'yuva420p', '-quality', q, '-compression_level', '6', '-loop', '0', out], { stdio: 'inherit' });
-  if (r.status !== 0) throw new Error('ffmpeg failed');
+  const encoders = spawnSync('ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8' });
+  const r = encoders.stdout?.includes('libwebp_anim')
+    ? spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(scene.fps), '-i', join(tmp, 'f%04d.png'),
+      '-c:v', 'libwebp_anim', '-pix_fmt', 'yuva420p', '-quality', q, '-compression_level', '6', '-loop', '0', out], { stdio: 'inherit' })
+    : spawnSync('img2webp', ['-loop', '0', '-lossy', '-q', q, '-m', '6', '-d', String(Math.round(1000 / scene.fps)),
+      ...Array.from({ length: frames }, (_, f) => join(tmp, `f${String(f).padStart(4, '0')}.png`)), '-o', out], { stdio: 'inherit' });
+  if (r.status !== 0) throw new Error('could not pack the frames into a WebP');
   console.log(`${out} (${(statSync(out).size / 1048576).toFixed(2)} MB, ${frames} frames)`);
 } finally {
   ws?.close();
