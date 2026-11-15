@@ -271,6 +271,12 @@ mark { background: var(--hit); color: inherit; border-radius: 3px; box-shadow: 0
 .trail > * { grid-area: 1 / 1; display: flex; align-items: center; }
 .info { gap: 4px; pointer-events: none; transition: opacity .15s, transform .3s var(--spring); }
 .info .icon { --sw: 2.3; width: 12px; height: 12px; color: var(--fg-soft); }
+/* The app a clip came from, in the UI font and quieter than its age. */
+.info .app {
+  max-width: 88px; margin-right: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 450 11px/1.2 "Geist", system-ui, sans-serif; letter-spacing: 0;
+  color: color-mix(in srgb, var(--muted-fg) 75%, var(--bg));
+}
 .acts { gap: 1px; pointer-events: none; }
 .acts > * { opacity: 0; transform: translateX(6px); transition: opacity .15s, transform .35s var(--spring), color .12s, background-color .12s; }
 .acts > :nth-child(2) { transition-delay: 25ms; }

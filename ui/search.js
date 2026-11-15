@@ -6,11 +6,16 @@
     image: ['image'], file: ['file'] };
   const AGE = { hour: 36e5, today: 864e5, week: 6048e5 };
 
+  // An app's name or id as @app: matches it, the same as in Rust (query::app_key):
+  // letters and digits in lower case, so @app:vscode finds com.microsoft.VSCode.
+  const appKey = (s) => (s || '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+
   function parse(q) {
-    const p = { terms: [], not: [], kinds: new Set(), pin: false, maxAge: 0 };
+    const p = { terms: [], not: [], kinds: new Set(), pin: false, maxAge: 0, apps: [] };
     for (const tok of q.trim().split(/\s+/).filter(Boolean)) {
       const head = tok[0], rest = tok.slice(1), key = rest.toLowerCase();
-      if (head === '@' && (KIND[key] || key === 'pin' || key === 'pinned' || AGE[key])) {
+      if (head === '@' && key.startsWith('app:') && appKey(rest.slice(4))) p.apps.push(appKey(rest.slice(4)));
+      else if (head === '@' && (KIND[key] || key === 'pin' || key === 'pinned' || AGE[key])) {
         if (KIND[key]) p.kinds.add(KIND[key]);
         else if (AGE[key]) p.maxAge = AGE[key];
         else p.pin = true;
@@ -106,6 +111,7 @@
       if (p.kinds.size && !p.kinds.has(clip.kind)) continue;
       if (tab && !tab.has(clip.kind)) continue;
       if (p.maxAge && o.now - clip.last_used > p.maxAge) continue;
+      if (p.apps.length && !p.apps.some((a) => appKey(clip.app).includes(a) || appKey(clip.app_id).includes(a))) continue;
       const text = haystack(clip);
       const lower = text.toLowerCase();
       if (p.not.some((w) => lower.includes(w))) continue;
@@ -135,7 +141,7 @@
     return out;
   }
 
-  const api = { parse, run, fuzzy, hits, SORTS: Object.keys(SORTS), TABS: Object.keys(TABS) };
+  const api = { parse, run, fuzzy, hits, appKey, SORTS: Object.keys(SORTS), TABS: Object.keys(TABS) };
   if (typeof module !== 'undefined') module.exports = api;
   else root.StashSearch = api;
 })(typeof window !== 'undefined' ? window : globalThis);

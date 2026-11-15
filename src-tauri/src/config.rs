@@ -21,6 +21,8 @@ pub struct Config {
     pub capture_screenshots: bool,
     /// Lets AI tools search and read the history through `stash mcp`.
     pub ai_access: bool,
+    /// Apps whose copies are never kept, by name ("Slack") or id ("com.tinyspeck.slackmacgap", "slack.exe").
+    pub ignore_apps: Vec<String>,
 }
 
 impl Default for Config {
@@ -36,7 +38,15 @@ impl Default for Config {
             max_image_megapixels: 40,
             capture_screenshots: true,
             ai_access: false,
+            ignore_apps: Vec::new(),
         }
+    }
+}
+
+impl Config {
+    /// Whether copies from this app are left out, matching its name or id in any case.
+    pub fn ignores_app(&self, id: &str, name: &str) -> bool {
+        self.ignore_apps.iter().map(|a| a.trim()).any(|a| a.eq_ignore_ascii_case(id) || a.to_lowercase() == name.to_lowercase())
     }
 }
 
@@ -140,6 +150,15 @@ mod tests {
 
         fs::remove_file(&file).unwrap();
         assert_eq!(watch.poll(), None);
+    }
+
+    #[test]
+    fn ignored_apps_match_by_name_or_id() {
+        let cfg = Config { ignore_apps: vec!["slack".into(), "com.agilebits.onepassword7".into()], ..Config::default() };
+        assert!(cfg.ignores_app("com.tinyspeck.slackmacgap", "Slack"));
+        assert!(cfg.ignores_app("com.agilebits.onepassword7", "1Password 7"));
+        assert!(!cfg.ignores_app("com.apple.Safari", "Safari"));
+        assert!(!Config::default().ignores_app("slack.exe", "Slack"));
     }
 
     #[test]

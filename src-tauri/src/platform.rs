@@ -6,6 +6,14 @@ pub struct Rect {
     pub bottom: i32,
 }
 
+/// The app a copy came from. `id` stays the same across languages and versions
+/// (a bundle id on macOS, the program's file name on Windows); `name` is what people call it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SourceApp {
+    pub id: String,
+    pub name: String,
+}
+
 // Screen coordinates are physical pixels on Windows and points on macOS (see `lib.rs`).
 // A target is the window (Windows) or process id (macOS) that had focus when the popup opened.
 
@@ -21,13 +29,17 @@ mod win {
     use super::Rect;
     use std::{ffi::c_void, mem::size_of, thread::sleep, time::Duration};
     use windows::{
-        core::w,
+        core::{w, PCWSTR, PWSTR},
         Win32::{
-            Foundation::{HWND, POINT},
+            Foundation::{CloseHandle, HWND, POINT},
             Graphics::Gdi::{ClientToScreen, GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
+            Storage::FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW},
             System::{
-                DataExchange::{IsClipboardFormatAvailable, RegisterClipboardFormatW},
-                Threading::GetCurrentThreadId,
+                DataExchange::{GetClipboardOwner, IsClipboardFormatAvailable, RegisterClipboardFormatW},
+                Threading::{
+                    GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+                    PROCESS_QUERY_LIMITED_INFORMATION,
+                },
             },
             UI::{
                 Input::KeyboardAndMouse::{
@@ -227,6 +239,62 @@ mod win {
             let fmt = RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing"));
             fmt != 0 && IsClipboardFormatAvailable(fmt).is_ok()
         }
+    }
+
+    /// The program that put the current copy on the clipboard: the clipboard's
+    /// owner, or the window in front when nobody owns it.
+    pub fn clipboard_source() -> Option<super::SourceApp> {
+        unsafe {
+            let owner = GetClipboardOwner().ok().filter(|h| !h.0.is_null()).unwrap_or_else(|| GetForegroundWindow());
+            if owner.0.is_null() {
+                return None;
+            }
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(owner, Some(&mut pid as *mut u32));
+            if pid == 0 || pid == std::process::id() {
+                return None;
+            }
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+            let mut buf = [0u16; 1024];
+            let mut len = buf.len() as u32;
+            let named = QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len);
+            let _ = CloseHandle(process);
+            named.ok()?;
+            let path = String::from_utf16_lossy(&buf[..len as usize]);
+            let file = path.rsplit(['\\', '/']).next().filter(|f| !f.is_empty())?.to_string();
+            // The buffer ends in a NUL after `len`, so it can be passed on as is.
+            let name = file_description(PCWSTR(buf.as_ptr())).unwrap_or_else(|| {
+                let stem = file.rsplit_once('.').map_or(file.as_str(), |(s, _)| s);
+                let mut c = stem.chars();
+                c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+            });
+            Some(super::SourceApp { id: file.to_lowercase(), name })
+        }
+    }
+
+    // A program's own name for itself ("Google Chrome" for chrome.exe), from its version resource.
+    unsafe fn file_description(path: PCWSTR) -> Option<String> {
+        let size = GetFileVersionInfoSizeW(path, None);
+        if size == 0 {
+            return None;
+        }
+        let mut data = vec![0u8; size as usize];
+        GetFileVersionInfoW(path, None, size, data.as_mut_ptr().cast()).ok()?;
+        let mut ptr: *mut c_void = std::ptr::null_mut();
+        let mut len = 0u32;
+        if !VerQueryValueW(data.as_ptr().cast(), w!("\\VarFileInfo\\Translation"), &mut ptr, &mut len).as_bool() || len < 4 {
+            return None;
+        }
+        let lang = std::ptr::read_unaligned(ptr as *const u16);
+        let page = std::ptr::read_unaligned((ptr as *const u16).add(1));
+        let key: Vec<u16> =
+            format!("\\StringFileInfo\\{lang:04x}{page:04x}\\FileDescription").encode_utf16().chain(Some(0)).collect();
+        if !VerQueryValueW(data.as_ptr().cast(), PCWSTR(key.as_ptr()), &mut ptr, &mut len).as_bool() || len == 0 {
+            return None;
+        }
+        let units: Vec<u16> = (0..len as usize).map(|i| std::ptr::read_unaligned((ptr as *const u16).add(i))).collect();
+        let name = String::from_utf16_lossy(&units).trim_end_matches('\0').trim().to_string();
+        (!name.is_empty()).then_some(name)
     }
 
     // Whoever just copied often holds the clipboard a moment longer, so wait for it as arboard does.
@@ -647,6 +715,20 @@ mod mac {
         })
     }
 
+    /// The app in front when the clipboard changed, which is the one that copied.
+    pub fn clipboard_source() -> Option<super::SourceApp> {
+        let me = std::process::id() as i32;
+        autoreleasepool(|_| {
+            let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
+            if app.processIdentifier() == me {
+                return None;
+            }
+            let id = app.bundleIdentifier().map(|s| s.to_string());
+            let name = app.localizedName().map(|s| s.to_string()).or_else(|| id.clone())?;
+            Some(super::SourceApp { id: id.unwrap_or_else(|| name.clone()), name })
+        })
+    }
+
     // A number that changes with every copy.
     pub fn clipboard_stamp() -> i64 {
         autoreleasepool(|_| NSPasteboard::generalPasteboard().changeCount() as i64)
@@ -826,6 +908,9 @@ mod other {
     }
     pub fn clipboard_is_sensitive() -> bool {
         false
+    }
+    pub fn clipboard_source() -> Option<super::SourceApp> {
+        None
     }
     pub fn reveal(path: &str) {
         open(if std::path::Path::new(path.trim()).is_dir() {

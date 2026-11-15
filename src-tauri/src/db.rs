@@ -18,6 +18,9 @@ pub struct Entry {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub bytes: i64,
+    /// The app it was copied from, by name and by id (`platform::SourceApp`).
+    pub app: Option<String>,
+    pub app_id: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -37,6 +40,9 @@ pub struct Clip {
     pub uses: i64,
     pub created: i64,
     pub last_used: i64,
+    /// The app it was copied from, when stash could tell.
+    pub app: Option<String>,
+    pub app_id: Option<String>,
 }
 
 pub struct Payload {
@@ -83,7 +89,9 @@ impl Db {
                  pinned    INTEGER NOT NULL DEFAULT 0,
                  uses      INTEGER NOT NULL DEFAULT 0,
                  created   INTEGER NOT NULL,
-                 last_used INTEGER NOT NULL
+                 last_used INTEGER NOT NULL,
+                 app       TEXT,
+                 app_id    TEXT
              );
              CREATE INDEX IF NOT EXISTS entries_last_used ON entries (last_used);
              CREATE TABLE IF NOT EXISTS ai_log (
@@ -96,6 +104,8 @@ impl Db {
         )?;
         add_column(&conn, "ocr_text", "TEXT NOT NULL DEFAULT ''")?;
         add_column(&conn, "html", "TEXT")?;
+        add_column(&conn, "app", "TEXT")?;
+        add_column(&conn, "app_id", "TEXT")?;
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version < 1 {
             fold_text_duplicates(&conn)?;
@@ -111,13 +121,15 @@ impl Db {
     pub fn add(&self, e: &Entry, now: i64, max_items: usize) -> rusqlite::Result<()> {
         let c = self.conn();
         c.execute(
-            "INSERT INTO entries (key, kind, text, ocr_text, html, data, thumb, width, height, bytes, created, last_used)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
+            "INSERT INTO entries (key, kind, text, ocr_text, html, data, thumb, width, height, bytes, created, last_used, app, app_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?12, ?13)
              ON CONFLICT(key) DO UPDATE SET last_used = excluded.last_used,
                  text = excluded.text, kind = excluded.kind, bytes = excluded.bytes,
                  html =COALESCE(excluded.html, html),
-                 ocr_text = CASE WHEN excluded.ocr_text <> '' THEN excluded.ocr_text ELSE ocr_text END",
-            params![e.key, e.kind, e.text, e.ocr_text, e.html, e.data, e.thumb, e.width, e.height, e.bytes, now],
+                 ocr_text = CASE WHEN excluded.ocr_text <> '' THEN excluded.ocr_text ELSE ocr_text END,
+                 app = COALESCE(excluded.app, app),
+                 app_id = COALESCE(excluded.app_id, app_id)",
+            params![e.key, e.kind, e.text, e.ocr_text, e.html, e.data, e.thumb, e.width, e.height, e.bytes, now, e.app, e.app_id],
         )?;
         c.execute(
             "DELETE FROM entries WHERE pinned = 0 AND id NOT IN
@@ -131,7 +143,7 @@ impl Db {
         let c = self.conn();
         let mut stmt = c.prepare(
             "SELECT id, kind, substr(text, 1, ?1), length(text), bytes, width, height, thumb,
-                    pinned, uses, created, last_used, ocr_text, html IS NOT NULL
+                    pinned, uses, created, last_used, ocr_text, html IS NOT NULL, app, app_id
              FROM entries ORDER BY last_used DESC, id DESC",
         )?;
         let rows = stmt.query_map(params![PREVIEW_CHARS], |r| {
@@ -154,6 +166,8 @@ impl Db {
                 created: r.get(10)?,
                 last_used: r.get(11)?,
                 ocr_text: r.get(12)?,
+                app: r.get(14)?,
+                app_id: r.get(15)?,
             })
         })?;
         rows.collect()
@@ -268,9 +282,12 @@ pub struct Row {
     pub uses: i64,
     pub created: i64,
     pub last_used: i64,
+    pub app: Option<String>,
+    pub app_id: Option<String>,
 }
 
-const ROW_SELECT: &str = "SELECT id, kind, text, ocr_text, substr(html, 1, 1024), width, height, pinned, uses, created, last_used FROM entries";
+const ROW_SELECT: &str =
+    "SELECT id, kind, text, ocr_text, substr(html, 1, 1024), width, height, pinned, uses, created, last_used, app, app_id FROM entries";
 
 impl Row {
     fn from(r: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -286,6 +303,8 @@ impl Row {
             uses: r.get(8)?,
             created: r.get(9)?,
             last_used: r.get(10)?,
+            app: r.get(11)?,
+            app_id: r.get(12)?,
         })
     }
 }
@@ -371,6 +390,8 @@ mod tests {
             width: None,
             height: None,
             bytes: t.len() as i64,
+            app: None,
+            app_id: None,
         }
     }
 
@@ -461,6 +482,8 @@ mod tests {
             width: Some(640),
             height: Some(480),
             bytes: 3,
+            app: None,
+            app_id: None,
         };
         db.add(&img, 1, 10).unwrap();
         let c = &db.list().unwrap()[0];
@@ -485,6 +508,8 @@ mod tests {
             width: Some(1),
             height: Some(1),
             bytes: 1,
+            app: None,
+            app_id: None,
         };
         db.add(&img, 1, 10).unwrap();
         img.ocr_text = "receipt".into();
@@ -508,6 +533,8 @@ mod tests {
             width: Some(1),
             height: Some(1),
             bytes: 1,
+            app: None,
+            app_id: None,
         };
         db.add(&img, 1, 10).unwrap();
         assert_eq!(db.list().unwrap()[0].ocr_text, "");
@@ -570,6 +597,20 @@ mod tests {
         assert_eq!(html(&db).as_deref(), Some("<b>hi</b>"));
         db.add(&Entry { html: Some("<i>hi</i>".into()), ..text("hi") }, 3, 10).unwrap();
         assert_eq!(html(&db).as_deref(), Some("<i>hi</i>"));
+    }
+
+    #[test]
+    fn clips_remember_the_app_they_came_from() {
+        let db = Db::in_memory().unwrap();
+        let from = |app: &str| Entry { app: Some(app.into()), app_id: Some(format!("id.{app}")), ..text("hi") };
+        db.add(&from("Safari"), 1, 10).unwrap();
+        let c = &db.list().unwrap()[0];
+        assert_eq!((c.app.as_deref(), c.app_id.as_deref()), (Some("Safari"), Some("id.Safari")));
+        // Copied again elsewhere: the latest app counts; copied where stash can't tell, the old one stays.
+        db.add(&from("Mail"), 2, 10).unwrap();
+        db.add(&text("hi"), 3, 10).unwrap();
+        let row = db.row(db.list().unwrap()[0].id).unwrap().unwrap();
+        assert_eq!((row.app.as_deref(), row.app_id.as_deref()), (Some("Mail"), Some("id.Mail")));
     }
 
     #[test]

@@ -60,6 +60,10 @@ CSS gradients.
 Finder, copy code as a fenced block or a colour as HEX, RGB or HSL. Right-click
 for the same in a menu.
 
+<img src="docs/icons/app.svg" width="24" height="24" align="top">&nbsp;Each clip remembers the app it was copied from, shown beside its age.
+Right-click it for *More from* that app or to *Skip* it, so its copies stop
+going in.
+
 <img src="docs/icons/camera.svg" width="24" height="24" align="top">&nbsp;macOS screenshots (`⌘⇧3`, `⌘⇧4`, `⌘⇧5`) are still saved as files and
 land in the history too, ready to paste.
 
@@ -151,19 +155,21 @@ match, and a capital letter makes a word case-sensitive.
 | `'word` · `^word` · `!word` | exactly it · starting with it · without it |
 | `@code` `@link` `@image` `@file` `@color` `@email` `@number` `@path` `@text` | one kind |
 | `@pin` · `@hour` `@today` `@week` | pinned · recent |
+| `@app:slack` | copied from Slack |
 
 <img src="docs/icons/tab.svg" width="24" height="24" align="top">&nbsp;Filters turn into chips as you type them. Combine freely: `@code !test fetch`.
 
 <img src="docs/icons/command.svg" width="24" height="24" align="top">&nbsp;The gear in the footer opens the settings: what stash is doing (capturing
 or paused, how many clips, whether they're encrypted), the shortcut, start at
-login, theme, which kinds get captured, and how many clips to keep. They're saved
+login, theme, which kinds get captured, which apps to skip, and how many clips
+to keep. They're saved
 to `config.json`, which you can also edit by hand; it applies as soon as you save.
 
 <img src="docs/icons/bolt.svg" width="24" height="24" align="top">&nbsp;AI tools like Claude and Cursor can search the history too, once you turn
 on *Share with AI tools* in the settings. stash is their MCP server (`stash mcp`;
 *Connect an app* copies the entry they need) with four tools: `search`, `read`,
 `grep` and `copy`. Search takes the language above plus `"phrases"`, `a|b`,
-`/regex/`, `@since:3d`, `@before:2026-11-01`, `@site:github.com` and `@size>2k`,
+`/regex/`, `@since:3d`, `@before:2026-11-01`, `@site:github.com`, `@app:slack` and `@size>2k`,
 ranks by relevance, and sorts by recent, oldest, frequent, largest or smallest.
 Answers are short: one line per clip with its size in tokens, near-copies folded
 together, and large clips as an outline first (JSON shape, table columns,
@@ -197,7 +203,8 @@ Manager, never in a file. Copies and backups of it are unreadable. It guards the
 history at rest, not against software running as you.
 
 <img src="docs/icons/key.svg" width="24" height="24" align="top">&nbsp;Password managers are respected. Copies they mark as "exclude from history"
-(1Password, KeePassXC…) are never stored.
+(1Password, KeePassXC…) are never stored, and neither is anything copied in an
+app you add to *Skip apps*.
 
 <img src="docs/icons/cloudoff.svg" width="24" height="24" align="top">&nbsp;Nothing leaves your computer unless you share it with an AI tool, and then
 only what that tool asks for. Text in images is recognized by the OCR built into

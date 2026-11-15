@@ -1,7 +1,7 @@
 // The query language AI tools search the history with, and how matches are
 // ranked. A superset of the popup's (ui/search.js): words, 'exact, ^start,
 // !without and @kind filters work the same, plus phrases, either-or, regexes,
-// dates, sites and sizes. Matching is literal rather than loose, since an agent
+// dates, sites, apps and sizes. Matching is literal rather than loose, since an agent
 // types whole words, and ranking is BM25 nudged by how recently and how often
 // a clip was used.
 
@@ -55,6 +55,8 @@ pub struct Query {
     pub since: Option<i64>,
     pub before: Option<i64>,
     pub sites: Vec<String>,
+    /// Apps the clip was copied from, as `app_key` spells them.
+    pub apps: Vec<String>,
     pub min_tokens: Option<usize>,
     pub max_tokens: Option<usize>,
     /// The bare words in order, as one phrase: clips holding them together rank higher.
@@ -242,6 +244,7 @@ pub fn parse(q: &str, now: i64) -> Result<Query, String> {
                 "since" | "after" if !val.is_empty() => p.since = Some(at(val)?),
                 "before" | "until" if !val.is_empty() => p.before = Some(at(val)?),
                 "site" | "from" | "domain" if !val.is_empty() => p.sites.push(val.trim_start_matches("www.").to_string()),
+                "app" if !app_key(val).is_empty() => p.apps.push(app_key(val)),
                 _ if key.starts_with("size") || key.starts_with("tokens") => {
                     let op = key.trim_start_matches("size").trim_start_matches("tokens");
                     let op = if op.is_empty() { val } else { op };
@@ -291,6 +294,12 @@ pub fn host(url: &str) -> Option<&str> {
     (!host.is_empty()).then(|| host.trim_start_matches("www."))
 }
 
+/// An app's name or id as `@app:` matches it: letters and digits only, in lower
+/// case, so `@app:vscode` finds Visual Studio Code by its id `com.microsoft.VSCode`.
+pub fn app_key(s: &str) -> String {
+    s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+}
+
 pub fn estimate_tokens(chars: usize) -> usize {
     chars.div_ceil(4)
 }
@@ -301,6 +310,9 @@ pub struct Doc<'a> {
     pub hay: &'a str,
     pub kind: &'a str,
     pub site: Option<&'a str>,
+    /// The app it was copied from, by name and id.
+    pub app: Option<&'a str>,
+    pub app_id: Option<&'a str>,
     pub pinned: bool,
     pub uses: i64,
     pub created: i64,
@@ -382,6 +394,10 @@ impl<'q> Ranker<'q> {
             && q.min_tokens.is_none_or(|n| d.tokens >= n)
             && q.max_tokens.is_none_or(|n| d.tokens <= n)
             && (q.sites.is_empty() || d.site.is_some_and(|h| q.sites.iter().any(|s| h == s || h.ends_with(&format!(".{s}")))))
+            && (q.apps.is_empty() || {
+                let names = [d.app, d.app_id].map(|n| n.map(app_key).unwrap_or_default());
+                q.apps.iter().any(|a| names.iter().any(|n| n.contains(a.as_str())))
+            })
     }
 
     /// Whether the clip matches; matching clips are kept for ranking.
@@ -485,6 +501,8 @@ mod tests {
             hay,
             kind,
             site: None,
+            app: None,
+            app_id: None,
             pinned: false,
             uses: 0,
             created: NOW - age_days * DAY,
@@ -525,7 +543,7 @@ mod tests {
     }
 
     #[test]
-    fn filters_narrow_by_kind_age_site_and_size() {
+    fn filters_narrow_by_kind_age_site_app_and_size() {
         let mut docs = vec![doc(1, "fn main() {}", "code", 0), doc(2, "old note", "text", 40), doc(3, "https://github.com/x", "link", 2)];
         docs[2].site = host("https://github.com/x");
         let big = "word ".repeat(4000);
@@ -535,6 +553,12 @@ mod tests {
         assert_eq!(ids("@before:30d", &docs, Sort::Recent), [2]);
         assert_eq!(ids("@since:2020-01-01 @text", &docs, Sort::Recent), [4, 2]);
         assert_eq!(ids("@site:github.com", &docs, Sort::Recent), [3]);
+        (docs[0].app, docs[0].app_id) = (Some("Visual Studio Code"), Some("com.microsoft.VSCode"));
+        (docs[1].app, docs[1].app_id) = (Some("Notes"), Some("com.apple.Notes"));
+        assert_eq!(ids("@app:vscode", &docs, Sort::Recent), [1]);
+        assert_eq!(ids("@app:visualstudio", &docs, Sort::Recent), [1]);
+        assert_eq!(ids("@app:Notes old", &docs, Sort::Recent), [2]);
+        assert_eq!(ids("@app:slack", &docs, Sort::Recent), Vec::<i64>::new());
         assert_eq!(ids("@size>2k", &docs, Sort::Recent), [4]);
         assert_eq!(ids("@size<10", &docs, Sort::Recent), [1, 3, 2]);
         assert!(parse("@since:soon", NOW).is_err());

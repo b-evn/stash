@@ -358,6 +358,8 @@ mod tests {
             width: None,
             height: None,
             bytes: 31,
+            app: None,
+            app_id: None,
         }
     }
 

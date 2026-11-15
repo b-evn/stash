@@ -47,4 +47,11 @@ assert.ok(S.run([mk('', { kind: 'image', ocr_text: 'invoice total $4,200' })], '
 assert.ok(S.run([mk('', { kind: 'image', ocr_text: 'Q4 goals ship v2 API' })], 'q4').length);
 assert.strictEqual(S.run([mk('', { kind: 'image', ocr_text: 'no match here' })], 'xyzzy').length, 0);
 assert.deepStrictEqual([...S.hits('total', 'invoice total $4,200')], [8, 9, 10, 11, 12]);
+const fromApps = [mk('notes', { app: 'Visual Studio Code', app_id: 'com.microsoft.VSCode' }), mk('more notes', { app: 'Notes' }), mk('no app')];
+assert.deepStrictEqual(texts(S.run(fromApps, '@app:vscode')), ['notes']);
+assert.deepStrictEqual(texts(S.run(fromApps, '@app:Visual-Studio')), ['notes']);
+assert.deepStrictEqual(texts(S.run(fromApps, 'notes @app:notes')), ['more notes']);
+assert.strictEqual(S.run(fromApps, '@app:slack').length, 0);
+assert.strictEqual(S.parse('@app:').terms.length, 1);
+assert.strictEqual(S.appKey('Microsoft Word'), 'microsoftword');
 console.log('search ok');

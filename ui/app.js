@@ -78,6 +78,8 @@
     enter: '<path d="M19 5v6a3 3 0 0 1-3 3H5"/><path class="g-left" d="m9 10-4 4 4 4"/>',
     backspace: '<path d="M9.3 5.5H18a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9.3a2 2 0 0 1-1.5-.7L3 12l4.8-5.8a2 2 0 0 1 1.5-.7Z"/><g class="g-spin2"><path d="m12 9.5 5 5"/><path d="m17 9.5-5 5"/></g>',
     click: '<g class="g-rays"><path d="M8 3v2.5"/><path d="M3 8h2.5"/><path d="m4.5 4.5 1.75 1.75"/></g><path class="g-ptr" d="m9 9 11 4.5-4.6 1.9-1.9 4.6Z"/>',
+    // An app: a window with its title bar.
+    app: '<g class="g-lift"><rect x="3.5" y="4.5" width="17" height="15" rx="3.5"/><path d="M3.5 9h17"/></g>' + DOT(6.5, 6.75, 1) + DOT(9, 6.75, 2),
     // A spark for AI tools: a four-point star with a small one beside it.
     agent: '<path class="g-press" d="M10.5 4c.7 4.1 2.4 5.8 6.5 6.5-4.1.7-5.8 2.4-6.5 6.5-.7-4.1-2.4-5.8-6.5-6.5 4.1-.7 5.8-2.4 6.5-6.5Z"/><path class="g-rays" d="M18 15.5v4.5M15.75 17.75h4.5"/>',
   };
@@ -108,7 +110,7 @@
   let mockStack = null;
   const mockPrefs = {
     config: { hotkey: 'Ctrl+Alt+V', max_items: 2000, max_clip_chars: 100000, ignore_sensitive: true, capture_images: true,
-      capture_files: true, ocr_images: true, max_image_megapixels: 40, capture_screenshots: true, ai_access: false },
+      capture_files: true, ocr_images: true, max_image_megapixels: 40, capture_screenshots: true, ai_access: false, ignore_apps: [] },
     mcp_command: 'C:\\Program Files\\stash\\stash.exe',
     ai_log: params.get('ai') ? [{ at: Date.now() - 120000, client: 'Claude Code', tool: 'search', detail: '"invoice @week"' }] : [],
     autostart: true,
@@ -188,10 +190,24 @@
     if (tok[0] === "'") return { icon: 'quote', label: `“${rest}”` };
     if (tok[0] === '^') return { icon: 'quote', label: `${rest}…` };
     const p = StashSearch.parse(tok);
+    if (p.apps.length) return { icon: 'app', label: appName(p.apps[0]) };
     if (p.pin) return { icon: 'pin', label: 'Pinned' };
     if (p.maxAge) return { icon: 'clock', label: CHIP_TIME[rest.toLowerCase()] };
     const kind = [...p.kinds][0];
     return { icon: ICON[kind] ? kind : 'text', label: CHIP_KIND[kind] || kind };
+  }
+
+  // The name of the app an @app: filter picks, as the clips spell it.
+  function appName(key) {
+    const hit = clips.find((c) => c.app && StashSearch.appKey(c.app) === key)
+      || clips.find((c) => c.app && (StashSearch.appKey(c.app).includes(key) || StashSearch.appKey(c.app_id).includes(key)));
+    return hit ? hit.app : key;
+  }
+
+  function addChip(tok) {
+    if (!chips.includes(tok)) chips.push(tok);
+    refresh();
+    q.focus();
   }
 
   function absorb(all = false) {
@@ -800,6 +816,13 @@
       }
     }
     if (special) items.push(menuSep(), special);
+    if (c.app) {
+      items.push(
+        menuSep(),
+        { icon: 'app', label: `More from ${c.app}`, action: () => addChip(`@app:${StashSearch.appKey(c.app)}`) },
+        { icon: 'ban', label: `Skip ${c.app}`, title: 'Copies from this app stop going in. Settings → Skip apps undoes it.', action: () => ignoreApp(c.app) },
+      );
+    }
     const inStack = stack.ids.includes(c.id);
     items.push(
       menuSep(),
@@ -1081,7 +1104,7 @@
     window.removeEventListener('resize', onMenuResize);
     document.removeEventListener('scroll', onMenuScroll, true);
     for (const p of ctl.panels) dismissPanel(p, animate);
-    if (focus) q.focus();
+    if (focus) (view === 'home' ? q : ctl.opener || prefsBody).focus({ preventScroll: true });
   }
 
   function clearClickGuard() {
@@ -1091,11 +1114,12 @@
     clickGuard = null;
   }
 
-  function openMenu(items, x, y, label) {
+  // `opener` gets the focus back in the settings, where there's no search field.
+  function openMenu(items, x, y, label, { opener = null } = {}) {
     clearClickGuard();
     if (menuCtl) closeMenu(false, false);
     const panel = menuPanel(items, 0, null);
-    const ctl = { panels: [panel] };
+    const ctl = { panels: [panel], opener };
     menuCtl = ctl;
     panel.root.setAttribute('aria-label', label || 'Actions');
     panel.root.style.maxHeight = 'none';
@@ -1141,7 +1165,7 @@
     window.addEventListener('blur', onMenuBlur);
     window.addEventListener('resize', onMenuResize);
     document.addEventListener('scroll', onMenuScroll, true);
-    q.focus();
+    if (view === 'home') q.focus();
   }
 
   function renderItem(r, i) {
@@ -1183,6 +1207,7 @@
     const trail = el('div', 'trail');
     const info = trail.appendChild(el('span', 'info'));
     if (c.pinned) info.innerHTML = svg('pin');
+    if (c.app) info.appendChild(el('span', 'app')).textContent = c.app;
     info.appendChild(el('span')).textContent = age(c.last_used);
     const acts = trail.appendChild(el('span', 'acts'));
     acts.append(
@@ -1385,6 +1410,17 @@
   const paste = (c, plain = false) => run('paste_clip', { id: c.id, plain }).then((pasted) => {
     if (pasted === false) { noAccess = true; renderFooter(); }
   });
+
+  // Adds the app to Skip apps in the settings, so its copies stop going in.
+  async function ignoreApp(name) {
+    const live = await run('get_settings');
+    if (!live) return;
+    const list = live.config.ignore_apps || [];
+    if (list.some((a) => a.toLowerCase() === name.toLowerCase())) return;
+    const config = { ...live.config, ignore_apps: [...list, name] };
+    const saved = (await run('set_config', { config })) || config;
+    if (prefs) prefs.config = saved;
+  }
   const copyOnly = (c) => run('copy_clip', { id: c.id });
 
   const setStack = (s) => { stack = s || { ids: [], done: 0 }; refresh(true); };
@@ -1873,6 +1909,37 @@
     return [share, connect, seen];
   }
 
+  // Apps whose copies never go in. The menu lists the apps clips came from, ticked when skipped.
+  function skipAppsRow() {
+    const shell = rowShell('div', 'app', 'Skip apps', '');
+    const btn = shell.row.appendChild(el('button', 'pbtn ctl'));
+    btn.textContent = 'Choose…';
+    const skipped = () => prefs.config.ignore_apps || [];
+    const isSkipped = (name) => skipped().some((a) => a.toLowerCase() === name.toLowerCase());
+    function items() {
+      const names = new Map();
+      for (const a of skipped()) names.set(a.toLowerCase(), a);
+      for (const c of clips) if (c.app && !names.has(c.app.toLowerCase())) names.set(c.app.toLowerCase(), c.app);
+      if (!names.size) return [{ label: 'Apps show up here once you copy from them', disabled: true }];
+      return [...names.values()].sort((a, b) => a.localeCompare(b)).map((name) => ({
+        label: name,
+        checked: isSkipped(name),
+        action: () => savePref('ignore_apps', isSkipped(name) ? skipped().filter((a) => a.toLowerCase() !== name.toLowerCase()) : [...skipped(), name]),
+      }));
+    }
+    btn.addEventListener('click', () => {
+      const r = btn.getBoundingClientRect();
+      openMenu(items(), r.right - MENU_W, r.bottom + 4, 'Skip apps', { opener: btn });
+    });
+    const row = {
+      row: shell.row,
+      ctl: btn,
+      subEl: shell.subEl,
+      sync() { setSub(row, skipped().length ? skipped().join(', ') : 'Copies from every app go in'); },
+    };
+    return row;
+  }
+
   // What stash is doing: capturing or paused, how many clips, and whether they are encrypted on disk.
   // Its mark's bars are the last clips, so a new copy drops in on top. On macOS a missing
   // Accessibility permission shows here too, since without it stash can only copy.
@@ -1987,6 +2054,7 @@
       }),
       'Capture',
       captureTiles(),
+      skipAppsRow(),
       'AI tools',
       ...aiRows(),
       'History',
@@ -2197,32 +2265,32 @@
     const whiteboard = svgUrl('<rect width="300" height="200" fill="#fafafa"/><rect x="20" y="30" width="80" height="44" rx="8" fill="none" stroke="#18181b" stroke-width="2"/><rect x="200" y="30" width="80" height="44" rx="8" fill="none" stroke="#18181b" stroke-width="2"/><rect x="110" y="130" width="80" height="44" rx="8" fill="#18181b"/><path d="M100 52 H200 M60 74 L130 130 M240 74 L170 130" stroke="#71717a" stroke-width="2" fill="none"/>', 300, 200);
     const c = (id, kind, text, ago, o = {}) => ({ id, kind, text, len: text.length, bytes: text.length, width: null, height: null, thumb: null, pinned: false, uses: 0, created: now - ago * m, last_used: now - ago * m, ...o });
     return [
-      c(1, 'link', 'https://github.com/b-evn/stash/issues/7', 1),
-      c(2, 'image', '', 4, { thumb: dashboard, width: 2560, height: 1600, bytes: 412000, ocr_text: 'Q4 revenue dashboard\nARR $4.2M, up 18% year over year' }),
-      c(3, 'text', 'Hi Sam,\nAttached is the invoice for September. Let me know if anything looks off.\nBest, Ben', 9, { uses: 3, rich: true }),
-      c(4, 'file', 'C:\\Users\\ben\\Documents\\Invoices\\invoice-0923.pdf', 14, { bytes: 184320 }),
-      c(5, 'code', 'const total = items.reduce((sum, i) => sum + i.price * i.qty, 0);\nreturn Math.round(total * 100) / 100;', 38, { uses: 5 }),
-      c(6, 'email', 'billing@acme-industries.com', 75, { pinned: true, uses: 14 }),
-      c(7, 'file', 'C:\\Users\\ben\\Pictures\\Trip\\IMG_2041.jpg\nC:\\Users\\ben\\Pictures\\Trip\\IMG_2042.jpg\nC:\\Users\\ben\\Pictures\\Trip\\IMG_2043.jpg', 130, { bytes: 11650000 }),
-      c(8, 'color', '#18181b', 200),
-      c(9, 'image', '', 1500, { thumb: photo, width: 4032, height: 3024, bytes: 3400000 }),
-      c(10, 'text', 'Meeting moved to Thursday 14:00 — bring the Q3 numbers', 1700),
-      c(11, 'number', 'DE89 3704 0044 0532 0130 00'.replace(/\s/g, ''), 2900, { pinned: true, uses: 8 }),
-      c(12, 'file', 'C:\\Users\\ben\\Desktop\\brand\\logo.svg', 3100, { bytes: 6200 }),
-      c(13, 'image', '', 5000, { thumb: whiteboard, width: 1200, height: 800, bytes: 98000, ocr_text: 'Checkout flow: cart → payment → receipt' }),
-      c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000),
-      c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000),
-      c(17, 'code', demoVisuals()[17], 600),
-      c(22, 'text', '🚀 👍🏽 🇩🇪', 380),
-      c(21, 'text', 'linear-gradient(135deg, #6366f1 0%, #ec4899 55%, #f59e0b 100%)', 520),
-      c(20, 'text', demoVisuals()[20], 450),
-      c(19, 'text', '/Users/ben/Desktop/Screenshot 2026-10-26 at 14.03.12.png', 300),
-      c(18, 'file', 'C:\\Users\\ben\\Downloads\\Geist-Regular.woff2', 900, { bytes: 68200 }),
+      c(1, 'link', 'https://github.com/b-evn/stash/issues/7', 1, { app: 'Google Chrome' }),
+      c(2, 'image', '', 4, { thumb: dashboard, width: 2560, height: 1600, bytes: 412000, ocr_text: 'Q4 revenue dashboard\nARR $4.2M, up 18% year over year', app: 'Snipping Tool' }),
+      c(3, 'text', 'Hi Sam,\nAttached is the invoice for September. Let me know if anything looks off.\nBest, Ben', 9, { uses: 3, rich: true, app: 'Outlook' }),
+      c(4, 'file', 'C:\\Users\\ben\\Documents\\Invoices\\invoice-0923.pdf', 14, { bytes: 184320, app: 'File Explorer' }),
+      c(5, 'code', 'const total = items.reduce((sum, i) => sum + i.price * i.qty, 0);\nreturn Math.round(total * 100) / 100;', 38, { uses: 5, app: 'Visual Studio Code' }),
+      c(6, 'email', 'billing@acme-industries.com', 75, { pinned: true, uses: 14, app: 'Outlook' }),
+      c(7, 'file', 'C:\\Users\\ben\\Pictures\\Trip\\IMG_2041.jpg\nC:\\Users\\ben\\Pictures\\Trip\\IMG_2042.jpg\nC:\\Users\\ben\\Pictures\\Trip\\IMG_2043.jpg', 130, { bytes: 11650000, app: 'File Explorer' }),
+      c(8, 'color', '#18181b', 200, { app: 'Figma' }),
+      c(9, 'image', '', 1500, { thumb: photo, width: 4032, height: 3024, bytes: 3400000, app: 'Photos' }),
+      c(10, 'text', 'Meeting moved to Thursday 14:00 — bring the Q3 numbers', 1700, { app: 'Microsoft Teams' }),
+      c(11, 'number', 'DE89 3704 0044 0532 0130 00'.replace(/\s/g, ''), 2900, { pinned: true, uses: 8, app: 'Google Chrome' }),
+      c(12, 'file', 'C:\\Users\\ben\\Desktop\\brand\\logo.svg', 3100, { bytes: 6200, app: 'File Explorer' }),
+      c(13, 'image', '', 5000, { thumb: whiteboard, width: 1200, height: 800, bytes: 98000, ocr_text: 'Checkout flow: cart → payment → receipt', app: 'Snipping Tool' }),
+      c(14, 'path', 'C:\\Projects\\stash\\src-tauri\\src\\lib.rs', 7000, { app: 'Visual Studio Code' }),
+      c(15, 'text', 'grocery list: oat milk, eggs, coffee, lemons', 12000, { app: 'Notepad' }),
+      c(17, 'code', demoVisuals()[17], 600, { app: 'Figma' }),
+      c(22, 'text', '🚀 👍🏽 🇩🇪', 380, { app: 'WhatsApp' }),
+      c(21, 'text', 'linear-gradient(135deg, #6366f1 0%, #ec4899 55%, #f59e0b 100%)', 520, { app: 'Figma' }),
+      c(20, 'text', demoVisuals()[20], 450, { app: 'Google Chrome' }),
+      c(19, 'text', '/Users/ben/Desktop/Screenshot 2026-10-26 at 14.03.12.png', 300, { app: 'Terminal' }),
+      c(18, 'file', 'C:\\Users\\ben\\Downloads\\Geist-Regular.woff2', 900, { bytes: 68200, app: 'File Explorer' }),
       // Made up. Split in two so secret scanners don't take it for a real key.
-      c(16, 'code', 'STRIPE_SECRET_KEY=sk_' + 'live_51NzQ8vKd2Lr7XbW4eTfYp9Hm\nDATABASE_URL=postgres://app:Tr0ub4dor@db.internal:5432/main', 14000),
-      c(23, 'text', '4111 1111 1111 1111', 16000),
-      c(24, 'text', 'ghp_' + 'a8Fk29QmZr7tLx0pVb3nW4eTfYp92345', 18000),
-      c(25, 'code', 'DB_PASSWORD=Tr0ub4dor&3', 20000),
+      c(16, 'code', 'STRIPE_SECRET_KEY=sk_' + 'live_51NzQ8vKd2Lr7XbW4eTfYp9Hm\nDATABASE_URL=postgres://app:Tr0ub4dor@db.internal:5432/main', 14000, { app: 'Visual Studio Code' }),
+      c(23, 'text', '4111 1111 1111 1111', 16000, { app: 'Google Chrome' }),
+      c(24, 'text', 'ghp_' + 'a8Fk29QmZr7tLx0pVb3nW4eTfYp92345', 18000, { app: 'Google Chrome' }),
+      c(25, 'code', 'DB_PASSWORD=Tr0ub4dor&3', 20000, { app: 'Visual Studio Code' }),
     ];
   }
 })();

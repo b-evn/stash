@@ -27,7 +27,7 @@ const IMAGE_MAX: u32 = 1568;
 /// Near-copies (most lines shared) are folded into the first one listed.
 const SIMILAR: f64 = 0.7;
 
-const QUERY_HELP: &str = "Query: words (all must match; any case unless a word has a capital), \"exact phrase\", 'wholeword, ^startswith, !exclude, either|or, /regex/i. Filters: @text @code @link @path @email @number @color @image @file, @pin, @hour @today @week @month, @since:3d @before:2026-11-01, @site:github.com, @size>2k @size<500 (tokens).";
+const QUERY_HELP: &str = "Query: words (all must match; any case unless a word has a capital), \"exact phrase\", 'wholeword, ^startswith, !exclude, either|or, /regex/i. Filters: @text @code @link @path @email @number @color @image @file, @pin, @hour @today @week @month, @since:3d @before:2026-11-01, @site:github.com, @app:slack (the app it was copied from), @size>2k @size<500 (tokens).";
 
 const INSTRUCTIONS: &str = "stash is the user's clipboard history: everything they copied, newest first. \
 search finds clips (one line each: id, kind, age, size in tokens, preview); read returns one clip, whole when small, \
@@ -311,6 +311,9 @@ impl Server {
             if row.pinned {
                 tags.push("pinned".to_string());
             }
+            if let Some(app) = &row.app {
+                tags.push(format!("from {app}"));
+            }
             if let Some(h) = source(row).as_deref().and_then(query::host).filter(|_| row.kind != "link") {
                 tags.push(h.to_string());
             }
@@ -543,6 +546,8 @@ fn doc<'a>(row: &'a Row, hay: &'a str, src: Option<&'a str>) -> Doc<'a> {
         hay,
         kind: &row.kind,
         site: src.and_then(query::host),
+        app: row.app.as_deref(),
+        app_id: row.app_id.as_deref(),
         pinned: row.pinned,
         uses: row.uses,
         created: row.created,
@@ -653,6 +658,9 @@ fn header(row: &Row, now: i64) -> String {
     }
     if row.pinned {
         parts.push("pinned".into());
+    }
+    if let Some(app) = &row.app {
+        parts.push(format!("from {app}"));
     }
     if let Some(src) = source(row).filter(|_| row.kind != "link") {
         parts.push(format!("from {}", outline::cut(&src, 100)));
@@ -853,6 +861,8 @@ mod tests {
             width: None,
             height: None,
             bytes: t.len() as i64,
+            app: None,
+            app_id: None,
         }
     }
 

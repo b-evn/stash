@@ -559,6 +559,8 @@ struct Watcher {
     quiet_until: Arc<AtomicI64>,
     cfg: Arc<RwLock<config::Config>>,
     ocr: Sender<(String, Vec<u8>)>,
+    /// The clipboard stamp of the last screenshot stash put there, so it's credited to the screenshot.
+    shot: Arc<AtomicI64>,
 }
 
 impl Watcher {
@@ -571,6 +573,15 @@ impl Watcher {
         if cfg.ignore_sensitive && platform::clipboard_is_sensitive() {
             return;
         }
+        // Asked first, while the app that copied is still the one in front.
+        let source = if platform::clipboard_stamp() == self.shot.load(Ordering::Relaxed) {
+            Some(platform::SourceApp { id: "com.apple.screenshot".into(), name: "Screenshot".into() })
+        } else {
+            platform::clipboard_source()
+        };
+        if source.as_ref().is_some_and(|a| cfg.ignores_app(&a.id, &a.name)) {
+            return;
+        }
         let limits = capture::Limits {
             max_chars: cfg.max_clip_chars,
             max_image_pixels: cfg.max_image_megapixels as u64 * 1_000_000,
@@ -579,7 +590,11 @@ impl Watcher {
         };
         for _ in 0..6 {
             if let Ok(mut cb) = arboard::Clipboard::new() {
-                if let Some(entry) = capture::read(&mut cb, &limits) {
+                if let Some(mut entry) = capture::read(&mut cb, &limits) {
+                    if let Some(a) = &source {
+                        entry.app = Some(a.name.clone());
+                        entry.app_id = Some(a.id.clone());
+                    }
                     if let Err(e) = self.db.add(&entry, now_ms(), cfg.max_items) {
                         eprintln!("stash: could not save clip: {e}");
                     } else {
@@ -822,10 +837,16 @@ pub fn run() {
             });
 
             // Screenshots saved as files go on the clipboard, so they are kept and ready to paste.
-            let (live, off) = (cfg.clone(), paused.clone());
+            let shot = Arc::new(AtomicI64::new(-1));
+            let (live, off, last_shot) = (cfg.clone(), paused.clone(), shot.clone());
             platform::watch_screenshots(move |path| {
                 let on = live.read().unwrap_or_else(|e| e.into_inner()).capture_screenshots;
-                if on && !off.load(Ordering::Relaxed) && !platform::copy_image_file(path) {
+                if !on || off.load(Ordering::Relaxed) {
+                    return;
+                }
+                if platform::copy_image_file(path) {
+                    last_shot.store(platform::clipboard_stamp(), Ordering::Relaxed);
+                } else {
                     eprintln!("stash: could not read screenshot {}", path.display());
                 }
             });
@@ -833,7 +854,7 @@ pub fn run() {
             let handle = app.handle().clone();
             thread::spawn(move || {
                 let ocr = ocr_worker(db.clone());
-                let watcher = Watcher { app: handle, db, paused, quiet_until, cfg, ocr };
+                let watcher = Watcher { app: handle, db, paused, quiet_until, cfg, ocr, shot };
                 match Master::new(watcher) {
                     Ok(mut master) => {
                         if let Err(e) = master.run() {

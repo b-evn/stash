@@ -47,6 +47,8 @@ pub fn text_entry(text: &str, limits: &Limits) -> Option<Entry> {
         width: None,
         height: None,
         bytes: text.len() as i64,
+        app: None,
+        app_id: None,
     })
 }
 
@@ -67,6 +69,8 @@ pub fn files_entry(paths: &[String]) -> Option<Entry> {
         width: None,
         height: None,
         bytes,
+        app: None,
+        app_id: None,
     })
 }
 
@@ -88,6 +92,8 @@ pub fn image_entry(width: u32, height: u32, rgba: &[u8], limits: &Limits) -> Opt
         data: Some(png),
         width: Some(width),
         height: Some(height),
+        app: None,
+        app_id: None,
     })
 }
 
