@@ -101,6 +101,18 @@ mod win {
     pub fn prepare_popup(_w: &tauri::WebviewWindow) {}
     pub fn release_focus(_w: &tauri::WebviewWindow) {}
     pub fn set_see_through(_w: &tauri::WebviewWindow, _on: bool) {}
+    // Only macOS parks the popup (see there): elsewhere it is hidden as before.
+    pub const PARKS: bool = false;
+    pub fn park(_w: &tauri::WebviewWindow) {}
+    pub fn park_at_start(_w: &tauri::WebviewWindow) {}
+    pub fn unpark(_w: &tauri::WebviewWindow) {}
+    pub fn show_parked(_w: &tauri::WebviewWindow) {}
+    pub fn hand_back(_app: isize) -> bool {
+        false
+    }
+    pub fn still_active() -> bool {
+        false
+    }
     pub fn can_paste() -> bool {
         true
     }
@@ -407,7 +419,7 @@ mod mac {
             Arc,
         },
         thread::sleep,
-        time::Duration,
+        time::{Duration, Instant},
     };
 
     // kVK_ANSI_V: the V key on US, German, French and most other layouts.
@@ -465,15 +477,28 @@ mod mac {
         (ok && sane).then_some(rect)
     }
 
+    // How long the focused app gets to say where its caret is, all questions together. Most answer
+    // in a millisecond; a busy one (often a browser building its accessibility tree) gets the popup
+    // at the pointer rather than holding it back.
+    const CARET_BUDGET: Duration = Duration::from_millis(120);
+
     // The text caret of the focused app through the Accessibility API, in global top-left points.
     fn caret() -> Option<(f64, f64, f64)> {
         if !trusted() {
             return None;
         }
+        let start = Instant::now();
+        // Gives `el` what is left of the budget to answer in, or gives up.
+        let budget = |el: &AXUIElement| {
+            let left = CARET_BUDGET.checked_sub(start.elapsed()).filter(|d| !d.is_zero())?;
+            unsafe { el.set_messaging_timeout(left.as_secs_f32()) };
+            Some(())
+        };
         let system = unsafe { AXUIElement::new_system_wide() };
-        unsafe { system.set_messaging_timeout(0.25) };
+        budget(&system)?;
         let focused = ax_copy(&system, "AXFocusedUIElement", None)?;
         let focused = focused.downcast_ref::<AXUIElement>()?;
+        budget(focused)?;
         let selection = ax_copy(focused, "AXSelectedTextRange", None)?;
         let mut range = CFRange { location: 0, length: 0 };
         let ok = unsafe {
@@ -482,10 +507,12 @@ mod mac {
         if !ok {
             return None;
         }
+        budget(focused)?;
         if let Some(r) = bounds_for(focused, range.location, 0) {
             return Some((r.origin.x, r.origin.y, r.origin.y + r.size.height));
         }
         // Some apps only report bounds for real characters: use the right edge of the previous one.
+        budget(focused)?;
         let r = bounds_for(focused, range.location.checked_sub(1)?, 1)?;
         Some((r.origin.x + r.size.width, r.origin.y, r.origin.y + r.size.height))
     }
@@ -567,6 +594,71 @@ mod mac {
         if let Some(win) = ns_window(w) {
             win.setAlphaValue(if on { 0.0 } else { 1.0 });
         }
+    }
+
+    // A web view in an ordered-out window stops drawing, and waking it takes tens of milliseconds
+    // after the window is back. So a closed popup is parked instead: it stays ordered in, fully
+    // transparent and letting every click through, and its page keeps the next opening drawn.
+    pub const PARKS: bool = true;
+
+    fn on_main(w: &tauri::WebviewWindow, f: fn(&NSWindow)) {
+        match ns_window(w) {
+            Some(win) => f(win),
+            None => {
+                let w2 = w.clone();
+                let _ = w.run_on_main_thread(move || {
+                    if let Some(win) = ns_window(&w2) {
+                        f(win);
+                    }
+                });
+            }
+        }
+    }
+
+    pub fn park(w: &tauri::WebviewWindow) {
+        on_main(w, |win| {
+            win.setAlphaValue(0.0);
+            win.setIgnoresMouseEvents(true);
+        });
+    }
+
+    // Puts the popup on screen parked when stash starts, so even the first opening finds it drawn.
+    pub fn park_at_start(w: &tauri::WebviewWindow) {
+        on_main(w, |win| {
+            win.setAlphaValue(0.0);
+            win.setIgnoresMouseEvents(true);
+            win.orderFrontRegardless();
+        });
+    }
+
+    pub fn unpark(w: &tauri::WebviewWindow) {
+        on_main(w, |win| win.setIgnoresMouseEvents(false));
+    }
+
+    // Shows the parked popup as it is. AppKit would pass the change on to the window server only
+    // once this turn of the main thread ends, after the slower work of taking the keyboard.
+    pub fn show_parked(w: &tauri::WebviewWindow) {
+        on_main(w, |win| {
+            win.setAlphaValue(1.0);
+            if let Some(cls) = objc2::runtime::AnyClass::get(c"CATransaction") {
+                let _: () = unsafe { objc2::msg_send![cls, flush] };
+            }
+        });
+    }
+
+    // Gives the keyboard back to the app the popup opened over. False when there's none to give it to.
+    pub fn hand_back(pid: isize) -> bool {
+        if pid <= 0 {
+            return false;
+        }
+        match NSRunningApplication::runningApplicationWithProcessIdentifier(pid as i32) {
+            Some(app) if !app.isTerminated() => app.activateWithOptions(NSApplicationActivationOptions::empty()),
+            _ => false,
+        }
+    }
+
+    pub fn still_active() -> bool {
+        MainThreadMarker::new().is_some_and(|mtm| NSApplication::sharedApplication(mtm).isActive())
     }
 
     pub fn can_paste() -> bool {
@@ -889,6 +981,18 @@ mod other {
     pub fn focus_popup(_w: &tauri::WebviewWindow) {}
     pub fn release_focus(_w: &tauri::WebviewWindow) {}
     pub fn set_see_through(_w: &tauri::WebviewWindow, _on: bool) {}
+    // Only macOS parks the popup (see there): elsewhere it is hidden as before.
+    pub const PARKS: bool = false;
+    pub fn park(_w: &tauri::WebviewWindow) {}
+    pub fn park_at_start(_w: &tauri::WebviewWindow) {}
+    pub fn unpark(_w: &tauri::WebviewWindow) {}
+    pub fn show_parked(_w: &tauri::WebviewWindow) {}
+    pub fn hand_back(_app: isize) -> bool {
+        false
+    }
+    pub fn still_active() -> bool {
+        false
+    }
     pub fn can_paste() -> bool {
         true
     }

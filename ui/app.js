@@ -97,6 +97,9 @@
   };
 
   let clips = [];
+  // The history as last read and the version it was read at (db.rs counts the changes). It is read
+  // again in the background whenever the history changes, so opening the popup draws straight from it.
+  let cached = { version: -1, clips: [] };
   let results = [];
   let sel = 0;
   let filter = 'all';
@@ -1303,7 +1306,13 @@
     if (!animate) { void hl.offsetHeight; hl.style.transition = ''; }
   }
 
+  const FIRST_ROWS = 20;
+  let rowsJob = 0;
+  // Runs `fn` after the next frame has been put on screen.
+  const afterPaint = (fn) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(fn)));
+
   function renderList() {
+    ++rowsJob;
     listEl.textContent = '';
     listEl.appendChild(hl);
     if (!results.length) {
@@ -1315,19 +1324,24 @@
     }
     const grouped = !query() && sort === 'recent';
     const now = Date.now();
-    const frag = document.createDocumentFragment();
+    const count = Math.min(results.length, MAX_ROWS);
     let last = null;
-    let n = 0;
-    // --i orders the rows' entrance when the popup opens (.stagger in style.css).
-    const add = (node) => { if (n < 14) node.style.setProperty('--i', n++); frag.appendChild(node); return node; };
-    results.slice(0, MAX_ROWS).forEach((r, i) => {
-      if (grouped) {
-        const g = groupOf(r.clip, now);
-        if (g !== last) { add(el('div', 'group')).textContent = g; last = g; }
+    const addRows = (from, to) => {
+      const frag = document.createDocumentFragment();
+      for (let i = from; i < to; i++) {
+        if (grouped) {
+          const g = groupOf(results[i].clip, now);
+          if (g !== last) { frag.appendChild(el('div', 'group')).textContent = g; last = g; }
+        }
+        frag.appendChild(renderItem(results[i], i));
       }
-      add(renderItem(r, i));
-    });
-    listEl.appendChild(frag);
+      listEl.appendChild(frag);
+    };
+    // Rows past the first screenful are added once the popup has been drawn, so it never waits on them.
+    const first = Math.min(count, Math.max(FIRST_ROWS, sel + FIRST_ROWS / 2));
+    addRows(0, first);
+    const job = rowsJob;
+    if (first < count) afterPaint(() => { if (job === rowsJob) addRows(first, count); });
     placeHighlight(false);
     scrollToSel();
   }
@@ -1369,24 +1383,33 @@
     if (scroll) scrollToSel();
   }
 
+  const tabBtns = new Map();
+  for (const [id, label] of TABS) {
+    const b = el('button');
+    b.textContent = label;
+    b.setAttribute('role', 'tab');
+    noFocusSteal(b);
+    b.addEventListener('click', () => { filter = id; refresh(); });
+    tabsEl.appendChild(b);
+    tabBtns.set(id, b);
+  }
+  // The tab the pill sits under. Measuring where it goes makes the page lay itself out on the
+  // spot, so that happens only when the tab changes.
+  let pillOn = null;
   function renderTabs(animate) {
-    tabsEl.querySelectorAll('button').forEach((b) => b.remove());
-    for (const [id, label] of TABS) {
-      const b = el('button');
-      b.textContent = label;
-      b.setAttribute('role', 'tab');
-      b.setAttribute('aria-selected', String(id === filter));
-      noFocusSteal(b);
-      b.addEventListener('click', () => { filter = id; refresh(); });
-      tabsEl.appendChild(b);
-    }
-    const on = tabsEl.querySelector('[aria-selected="true"]');
+    for (const [id, b] of tabBtns) b.setAttribute('aria-selected', String(id === filter));
+    pinBtn.setAttribute('aria-pressed', String(pinnedOnly));
+    if (pillOn === filter) return;
+    const on = tabBtns.get(filter);
     if (!animate) pill.style.transition = 'none';
     pill.style.transform = `translateX(${on.offsetLeft - 3}px)`;
     pill.style.width = on.offsetWidth + 'px';
     if (!animate) { void pill.offsetWidth; pill.style.transition = ''; }
-    pinBtn.setAttribute('aria-pressed', String(pinnedOnly));
+    // Not measured while the list is hidden (settings open).
+    pillOn = on.offsetWidth ? filter : null;
   }
+  // The tabs' widths change once the font has loaded.
+  document.fonts.ready.then(() => { pillOn = null; renderTabs(false); });
 
   function renderFooter() {
     const on = stack.ids.length > 0;
@@ -1460,7 +1483,11 @@
   }
   const copyOnly = (c) => run('copy_clip', { id: c.id });
 
-  const setStack = (s) => { stack = s || { ids: [], done: 0 }; refresh(true); };
+  const setStack = (s) => {
+    stack = s || { ids: [], done: 0 };
+    if (parked) prepare();
+    else refresh(true);
+  };
   const toggleStack = (c) => run('toggle_stack', { id: c.id }).then((s) => s && setStack(s));
   const cancelStack = () => run('cancel_stack').then(() => setStack());
   const pasteStack = () => run('paste_stack');
@@ -1902,7 +1929,7 @@
       clearTimeout(armed);
       armed = null;
       await run('clear_history');
-      try { clips = await call('list_clips'); } catch (e) { console.error(e); }
+      clips = await readClips();
       btn.classList.remove('arm');
       btn.classList.add('done');
       btn.innerHTML = svg('check') + 'Cleared';
@@ -2017,7 +2044,7 @@
   // A clip came in while the settings are open: the mark's bars move down to make room for it.
   async function clipAdded() {
     if (view !== 'prefs' || !prefs) return;
-    try { clips = await call('list_clips'); } catch { return; }
+    clips = await readClips();
     syncPrefs();
     if (!mark) return;
     mark.classList.remove('tick');
@@ -2185,8 +2212,22 @@
   configBtn.addEventListener('click', () => run('reveal_config'));
   [backBtn, configBtn].forEach(noFocusSteal);
 
-  let staggerEnd = null;
-  async function open(target) {
+  // Keeps `cached` current. A slower read that lands after a newer one is dropped.
+  async function readClips() {
+    try {
+      const got = await call('list_clips');
+      if (got && got.version >= cached.version) cached = got;
+    } catch (e) { console.error(e); }
+    return cached.clips;
+  }
+  let rereadSoon = null;
+  listen('stash-changed', () => {
+    clearTimeout(rereadSoon);
+    rereadSoon = setTimeout(() => readClips().then(prepare), 40);
+  });
+
+  // Puts the page in the state every opening starts from: no search, the first row, on `target`.
+  async function reset(target) {
     clearClickGuard();
     closeMenu(false, false);
     stopRecording();
@@ -2197,22 +2238,52 @@
     filter = params.get('tab') || 'all';
     pinnedOnly = false;
     noAccess = false;
-    try { clips = await call('list_clips'); } catch (e) { console.error(e); clips = []; }
-    try { stack = (await call('get_stack')) || stack; } catch {}
+    clips = cached.clips;
     view = target === 'settings' ? 'prefs' : 'home';
     if (view === 'prefs') await loadPrefs();
     homeEl.hidden = view !== 'home';
     prefsEl.hidden = view !== 'prefs';
     prefsEl.style.setProperty('--dx', '0px');
-    card.classList.remove('enter');
-    void card.offsetWidth;
-    card.classList.add('enter');
-    listEl.classList.add('stagger');
-    clearTimeout(staggerEnd);
-    staggerEnd = setTimeout(() => listEl.classList.remove('stagger'), 700);
     refresh();
     renderTabs(false);
     if (params.get('sel')) select(Number(params.get('sel')), true);
+  }
+
+  // On macOS a closed popup is parked: out of sight but still drawing (platform.rs). The page draws
+  // the next opening there and tells the back end once that frame is on screen, so opening the
+  // popup only has to show it.
+  let parked = false;
+  let readyJob = 0;
+  function prepare() {
+    if (!parked) return;
+    reset('list');
+    const version = cached.version, job = ++readyJob;
+    afterPaint(() => { if (parked && job === readyJob) run('page_ready', { version }); });
+  }
+  function park() {
+    parked = true;
+    document.body.classList.add('parked');
+    prepare();
+  }
+  listen('stash-hide', park);
+  // Keeps the ages and day groups on the parked page current.
+  setInterval(prepare, 60e3);
+
+  // `how` is the view to open on, or what the back end sends with stash-show: the view, the
+  // history's version, and whether the parked page's frame is already showing (`instant`).
+  async function open(how) {
+    const { view: target, version, instant } = how && typeof how === 'object' ? how : { view: how };
+    parked = false;
+    ++readyJob;
+    document.body.classList.remove('parked');
+    if (instant) {
+      q.focus();
+      return;
+    }
+    if (!(cached.version >= version)) await readClips();
+    // The demo has no stack events to wait for.
+    if (version === undefined) { try { stack = (await call('get_stack')) || stack; } catch {} }
+    await reset(target);
     if (view === 'prefs') settle();
     else q.focus();
     // The window stays see-through until this opening has been drawn.
@@ -2243,10 +2314,16 @@
     if (view === 'home') q.focus();
     else if (!prefsEl.contains(document.activeElement)) prefsBody.focus({ preventScroll: true });
   });
-  open(params.get('view'));
+  // In the app the popup starts out parked, with the history and the stack read once.
+  if (tauri) {
+    const stackRead = call('get_stack').then((s) => { if (s) stack = s; }).catch(() => {});
+    Promise.all([readClips(), stackRead]).then(park);
+  } else {
+    open(params.get('view'));
+  }
 
   function mockInvoke(cmd, args) {
-    if (cmd === 'list_clips') return Promise.resolve(window.STASH_DEMO || demoClips());
+    if (cmd === 'list_clips') return Promise.resolve({ version: 0, clips: window.STASH_DEMO || demoClips() });
     if (cmd === 'visual_source') {
       if (args.id === 18) return fetch('fonts/geist.woff2').then((r) => r.arrayBuffer());
       const src = demoVisuals()[args.id];

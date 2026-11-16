@@ -1,7 +1,13 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::Serialize;
-use std::{path::Path, sync::Mutex};
+use std::{
+    path::Path,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex, OnceLock,
+    },
+};
 
 const PREVIEW_CHARS: i64 = 600;
 
@@ -54,7 +60,34 @@ pub struct Payload {
 
 pub struct Db {
     conn: Mutex<Connection>,
+    /// Counts the changes to the clips, so a list read earlier can tell it is still current.
+    version: AtomicU64,
+    on_change: OnceLock<Box<dyn Fn(u64) + Send + Sync>>,
 }
+
+// The columns of `entries`, small ones first. A row larger than a page spills into a chain of
+// overflow pages, and reaching a column means decrypting every page before it: with the image
+// bytes last, listing the history never reads them.
+const ENTRIES: &str = "
+    id        INTEGER PRIMARY KEY,
+    key       TEXT    NOT NULL UNIQUE,
+    kind      TEXT    NOT NULL,
+    pinned    INTEGER NOT NULL DEFAULT 0,
+    uses      INTEGER NOT NULL DEFAULT 0,
+    created   INTEGER NOT NULL,
+    last_used INTEGER NOT NULL,
+    width     INTEGER,
+    height    INTEGER,
+    bytes     INTEGER NOT NULL,
+    app       TEXT,
+    app_id    TEXT,
+    thumb     BLOB,
+    ocr_text  TEXT    NOT NULL DEFAULT '',
+    text      TEXT    NOT NULL,
+    html      TEXT,
+    data      BLOB";
+const ENTRY_COLUMNS: &str =
+    "id, key, kind, pinned, uses, created, last_used, width, height, bytes, app, app_id, thumb, ocr_text, text, html, data";
 
 impl Db {
     /// Opens the history encrypted with `key` (64 hex digits), see `vault`.
@@ -72,27 +105,11 @@ impl Db {
     fn init(conn: Connection) -> rusqlite::Result<Self> {
         // The app and the MCP server can have the history open at once.
         conn.busy_timeout(std::time::Duration::from_secs(3))?;
-        conn.execute_batch(
+        let fresh: bool =
+            conn.query_row("SELECT NOT EXISTS (SELECT 1 FROM sqlite_master WHERE name = 'entries')", [], |r| r.get(0))?;
+        conn.execute_batch(&format!(
             "PRAGMA journal_mode = WAL;
-             CREATE TABLE IF NOT EXISTS entries (
-                 id        INTEGER PRIMARY KEY,
-                 key       TEXT    NOT NULL UNIQUE,
-                 kind      TEXT    NOT NULL,
-                 text      TEXT    NOT NULL,
-                 ocr_text  TEXT    NOT NULL DEFAULT '',
-                 html      TEXT,
-                 data      BLOB,
-                 thumb     BLOB,
-                 width     INTEGER,
-                 height    INTEGER,
-                 bytes     INTEGER NOT NULL,
-                 pinned    INTEGER NOT NULL DEFAULT 0,
-                 uses      INTEGER NOT NULL DEFAULT 0,
-                 created   INTEGER NOT NULL,
-                 last_used INTEGER NOT NULL,
-                 app       TEXT,
-                 app_id    TEXT
-             );
+             CREATE TABLE IF NOT EXISTS entries ({ENTRIES});
              CREATE INDEX IF NOT EXISTS entries_last_used ON entries (last_used);
              CREATE TABLE IF NOT EXISTS ai_log (
                  id     INTEGER PRIMARY KEY,
@@ -100,8 +117,11 @@ impl Db {
                  client TEXT    NOT NULL,
                  tool   TEXT    NOT NULL,
                  detail TEXT    NOT NULL
-             );",
-        )?;
+             );"
+        ))?;
+        if fresh {
+            conn.execute_batch("PRAGMA user_version = 2;")?;
+        }
         add_column(&conn, "ocr_text", "TEXT NOT NULL DEFAULT ''")?;
         add_column(&conn, "html", "TEXT")?;
         add_column(&conn, "app", "TEXT")?;
@@ -111,7 +131,29 @@ impl Db {
             fold_text_duplicates(&conn)?;
             conn.execute_batch("PRAGMA user_version = 1;")?;
         }
-        Ok(Self { conn: Mutex::new(conn) })
+        if version < 2 {
+            // Every query names its columns, so a history left as it was still works, only slower to list.
+            if let Err(e) = put_large_columns_last(&conn) {
+                eprintln!("stash: could not reorder the history's columns: {e}");
+            }
+        }
+        Ok(Self { conn: Mutex::new(conn), version: AtomicU64::new(0), on_change: OnceLock::new() })
+    }
+
+    /// Calls `f` with the new version after every change to the clips.
+    pub fn on_change(&self, f: impl Fn(u64) + Send + Sync + 'static) {
+        let _ = self.on_change.set(Box::new(f));
+    }
+
+    pub fn version(&self) -> u64 {
+        self.version.load(Ordering::SeqCst)
+    }
+
+    fn changed(&self) {
+        let v = self.version.fetch_add(1, Ordering::SeqCst) + 1;
+        if let Some(f) = self.on_change.get() {
+            f(v);
+        }
     }
 
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -136,6 +178,8 @@ impl Db {
                  (SELECT id FROM entries WHERE pinned = 0 ORDER BY last_used DESC, id DESC LIMIT ?1)",
             params![max_items as i64],
         )?;
+        drop(c);
+        self.changed();
         Ok(())
     }
 
@@ -183,39 +227,50 @@ impl Db {
 
     /// Stores a thumbnail drawn for a file or SVG clip, unless it has one.
     pub fn set_thumb(&self, id: i64, thumb: &[u8], width: u32, height: u32) -> rusqlite::Result<bool> {
-        self.conn()
-            .execute(
-                "UPDATE entries SET thumb = ?2, width = ?3, height = ?4
-                 WHERE id = ?1 AND thumb IS NULL AND kind <> 'image'",
-                params![id, thumb, width, height],
-            )
-            .map(|n| n > 0)
+        let n = self.conn().execute(
+            "UPDATE entries SET thumb = ?2, width = ?3, height = ?4
+             WHERE id = ?1 AND thumb IS NULL AND kind <> 'image'",
+            params![id, thumb, width, height],
+        )?;
+        if n > 0 {
+            self.changed();
+        }
+        Ok(n > 0)
     }
 
     /// Stores the text recognized in an image clip, which arrives after the clip is saved.
     pub fn set_ocr(&self, key: &str, text: &str) -> rusqlite::Result<()> {
-        self.conn().execute("UPDATE entries SET ocr_text = ?2 WHERE key = ?1", params![key, text]).map(|_| ())
+        self.conn().execute("UPDATE entries SET ocr_text = ?2 WHERE key = ?1", params![key, text])?;
+        self.changed();
+        Ok(())
     }
 
     pub fn mark_used(&self, id: i64, now: i64) -> rusqlite::Result<()> {
-        self.conn()
-            .execute("UPDATE entries SET uses = uses + 1, last_used = ?2 WHERE id = ?1", params![id, now])
-            .map(|_| ())
+        self.conn().execute("UPDATE entries SET uses = uses + 1, last_used = ?2 WHERE id = ?1", params![id, now])?;
+        self.changed();
+        Ok(())
     }
 
     pub fn toggle_pin(&self, id: i64) -> rusqlite::Result<()> {
-        self.conn().execute("UPDATE entries SET pinned = 1 - pinned WHERE id = ?1", params![id]).map(|_| ())
+        self.conn().execute("UPDATE entries SET pinned = 1 - pinned WHERE id = ?1", params![id])?;
+        self.changed();
+        Ok(())
     }
 
     pub fn delete(&self, id: i64) -> rusqlite::Result<()> {
-        self.conn().execute("DELETE FROM entries WHERE id = ?1", params![id]).map(|_| ())
+        self.conn().execute("DELETE FROM entries WHERE id = ?1", params![id])?;
+        self.changed();
+        Ok(())
     }
 
     pub fn clear_unpinned(&self) -> rusqlite::Result<()> {
         let c = self.conn();
         c.execute("DELETE FROM entries WHERE pinned = 0", [])?;
         c.execute("DELETE FROM ai_log", [])?;
-        c.execute_batch("VACUUM;")
+        let done = c.execute_batch("VACUUM;");
+        drop(c);
+        self.changed();
+        done
     }
 
     /// Every clip with its whole text, newest first, one at a time.
@@ -322,6 +377,24 @@ pub(crate) fn unlock(conn: &Connection, key: &str) -> rusqlite::Result<()> {
         return Err(refuse("SQLite was built without SQLCipher"));
     }
     Ok(())
+}
+
+/// Rebuilds `entries` with the columns in `ENTRIES` order, for histories made before it.
+fn put_large_columns_last(conn: &Connection) -> rusqlite::Result<()> {
+    // The app and the MCP server may both get here: the second one finds it done.
+    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    if tx.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? >= 2 {
+        return Ok(());
+    }
+    tx.execute_batch(&format!(
+        "CREATE TABLE entries_new ({ENTRIES});
+         INSERT INTO entries_new ({ENTRY_COLUMNS}) SELECT {ENTRY_COLUMNS} FROM entries;
+         DROP TABLE entries;
+         ALTER TABLE entries_new RENAME TO entries;
+         CREATE INDEX entries_last_used ON entries (last_used);
+         PRAGMA user_version = 2;"
+    ))?;
+    tx.commit()
 }
 
 /// Rekeys text clips with `capture::text_key` and merges the ones that now share
@@ -441,10 +514,35 @@ mod tests {
         let db = Db::init(conn).unwrap();
         let l = db.list().unwrap();
         assert_eq!(l.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["foo\n", "bar"]);
+        let columns: Vec<String> = db
+            .conn()
+            .prepare("SELECT name FROM pragma_table_info('entries')")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(columns.join(", "), ENTRY_COLUMNS);
         assert_eq!((l[0].pinned, l[0].uses, l[0].created, l[0].last_used), (true, 5, 1, 3));
         let foo = Entry { key: crate::capture::text_key("foo"), ..text("foo") };
         db.add(&foo, 4, 10).unwrap();
         assert_eq!(db.list().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn every_change_moves_the_version_on() {
+        let db = Db::in_memory().unwrap();
+        let seen = std::sync::Arc::new(AtomicU64::new(0));
+        let s = seen.clone();
+        db.on_change(move |v| s.store(v, Ordering::SeqCst));
+        db.add(&text("a"), 1, 10).unwrap();
+        let id = db.list().unwrap()[0].id;
+        db.mark_used(id, 2).unwrap();
+        db.toggle_pin(id).unwrap();
+        db.set_ocr("t:a", "").unwrap();
+        db.delete(id).unwrap();
+        db.clear_unpinned().unwrap();
+        assert_eq!((db.version(), seen.load(Ordering::SeqCst)), (6, 6));
     }
 
     #[test]

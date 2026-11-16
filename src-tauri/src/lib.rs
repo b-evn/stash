@@ -96,6 +96,12 @@ struct AppState {
     placement: Mutex<Option<Placement>>,
     height_px: Mutex<i32>,
     shown_at: Mutex<Instant>,
+    // Whether the popup is open: a closed one can still be on screen, parked (`platform::park`).
+    open: AtomicBool,
+    // The app that was in front when the popup opened, to give the keyboard back to.
+    came_from: Mutex<isize>,
+    // The history version the parked page has drawn its next opening for, once that frame is on screen.
+    ready: Mutex<Option<u64>>,
 }
 
 fn now_ms() -> i64 {
@@ -129,7 +135,7 @@ struct TrayChecks {
 
 fn toggle_popup(app: &AppHandle, from_tray: bool) {
     let Some(w) = popup(app) else { return };
-    if w.is_visible().unwrap_or(false) {
+    if app.state::<AppState>().open.load(Ordering::SeqCst) {
         hide_popup(app);
         return;
     }
@@ -138,7 +144,7 @@ fn toggle_popup(app: &AppHandle, from_tray: bool) {
 
 fn show_settings(app: &AppHandle) {
     let Some(w) = popup(app) else { return };
-    if w.is_visible().unwrap_or(false) {
+    if app.state::<AppState>().open.load(Ordering::SeqCst) {
         let _ = app.emit("stash-view", "settings");
         let _ = w.set_focus();
     } else {
@@ -150,8 +156,9 @@ fn show_settings(app: &AppHandle) {
 fn show_popup(app: &AppHandle, w: &WebviewWindow, from_tray: bool, view: &str) {
     let st = app.state::<AppState>();
 
-    let target = if from_tray { 0 } else { platform::foreground() };
-    *st.target.lock().unwrap() = target;
+    let front = platform::foreground();
+    *st.target.lock().unwrap() = if from_tray { 0 } else { front };
+    *st.came_from.lock().unwrap() = front;
 
     let scale = screen_scale(w);
     let px = |v: f64| (v * scale).round() as i32;
@@ -167,34 +174,69 @@ fn show_popup(app: &AppHandle, w: &WebviewWindow, from_tray: bool, view: &str) {
     let y = y_for(&placement, height);
     *st.placement.lock().unwrap() = Some(placement);
 
-    // The window still holds the last frame of the previous opening; keep it see-through
-    // until the page has drawn this one (`reveal_window`), so the old frame can't flash up.
-    platform::set_see_through(w, true);
+    // A parked page that has drawn this opening already, for the history as it is now, is simply
+    // shown. Otherwise the window still holds an older frame; it stays see-through until the page
+    // has drawn this one (`reveal_window`), so the old frame can't flash up.
+    let version = st.db.version();
+    let drawn = st.ready.lock().unwrap().take() == Some(version);
+    let instant = platform::PARKS && view == "list" && drawn && w.is_visible().unwrap_or(false);
+    if !instant {
+        platform::set_see_through(w, true);
+    }
     let _ = w.set_size(screen_size(width, height));
     let _ = w.set_position(screen_pos(x, y));
     *st.shown_at.lock().unwrap() = Instant::now();
-    let _ = app.emit("stash-show", view);
+    st.open.store(true, Ordering::SeqCst);
+    // The page keeps the list it last read and draws from it when `version` says it is current.
+    let _ = app.emit("stash-show", Show { view, version, instant });
+    platform::unpark(w);
+    if instant {
+        platform::show_parked(w);
+    }
     let _ = w.show();
     let _ = w.set_focus();
     platform::focus_popup(w);
+    if instant {
+        return;
+    }
 
     let handle = app.clone();
     thread::spawn(move || {
         thread::sleep(REVEAL_LATE);
         let h = handle.clone();
         let _ = handle.run_on_main_thread(move || {
-            // A newer opening has its own fallback.
-            if h.state::<AppState>().shown_at.lock().unwrap().elapsed() >= REVEAL_LATE {
+            // A newer opening has its own fallback, and a closed popup stays out of sight.
+            let st = h.state::<AppState>();
+            if st.open.load(Ordering::SeqCst) && st.shown_at.lock().unwrap().elapsed() >= REVEAL_LATE {
                 reveal_window(h.clone());
             }
         });
     });
 }
 
+#[derive(Serialize, Clone)]
+struct Show<'a> {
+    view: &'a str,
+    version: u64,
+    // Already on screen as the parked page drew it.
+    instant: bool,
+}
+
 #[tauri::command]
 fn reveal_window(app: AppHandle) {
+    if !app.state::<AppState>().open.load(Ordering::SeqCst) {
+        return;
+    }
     if let Some(w) = popup(&app) {
         platform::set_see_through(&w, false);
+    }
+}
+
+// The parked page has put the next opening on screen, drawn for history `version`.
+#[tauri::command]
+fn page_ready(state: State<AppState>, version: u64) {
+    if !state.open.load(Ordering::SeqCst) {
+        *state.ready.lock().unwrap() = Some(version);
     }
 }
 
@@ -204,15 +246,62 @@ fn y_for(p: &Placement, height: i32) -> i32 {
 }
 
 fn hide_popup(app: &AppHandle) {
-    if let Some(w) = popup(app) {
+    close_popup(app, true);
+}
+
+// `hand_back` gives the keyboard back to the app the popup opened over; without it, another
+// app has taken it already (the popup lost focus).
+fn close_popup(app: &AppHandle, hand_back: bool) {
+    let st = app.state::<AppState>();
+    let Some(w) = popup(app) else { return };
+    let was_open = st.open.swap(false, Ordering::SeqCst);
+    *st.ready.lock().unwrap() = None;
+    if !platform::PARKS {
         let _ = w.hide();
-        platform::release_focus(&w);
+        if hand_back {
+            platform::release_focus(&w);
+        }
+        return;
     }
+    if !was_open {
+        return;
+    }
+    platform::park(&w);
+    let _ = app.emit("stash-hide", ());
+    if !hand_back {
+        return;
+    }
+    if !platform::hand_back(*st.came_from.lock().unwrap()) {
+        platform::release_focus(&w);
+        return;
+    }
+    // Should the app refuse the keyboard, stash would keep it with nothing visible to type into:
+    // hide stash then, as before parking, which hands it back for sure.
+    let handle = app.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(250));
+        let h = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            if !h.state::<AppState>().open.load(Ordering::SeqCst) && platform::still_active() {
+                if let Some(w) = popup(&h) {
+                    platform::release_focus(&w);
+                }
+            }
+        });
+    });
+}
+
+#[derive(Serialize)]
+struct ClipList {
+    version: u64,
+    clips: Vec<Clip>,
 }
 
 #[tauri::command]
-fn list_clips(state: State<AppState>) -> Result<Vec<Clip>, String> {
-    state.db.list().map_err(|e| e.to_string())
+fn list_clips(state: State<AppState>) -> Result<ClipList, String> {
+    // Read before the list: a change in between leaves the list newer than it says, never older.
+    let version = state.db.version();
+    Ok(ClipList { version, clips: state.db.list().map_err(|e| e.to_string())? })
 }
 
 // `plain` leaves out the formatting text was copied with.
@@ -271,6 +360,8 @@ fn stack_status(app: &AppHandle) -> StackStatus {
 }
 
 fn emit_stack(app: &AppHandle) {
+    // The parked page draws the change and says so again.
+    *app.state::<AppState>().ready.lock().unwrap() = None;
     let _ = app.emit("stash-stack", stack_status(app));
 }
 
@@ -785,7 +876,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
-            list_clips, paste_clip, paste_choices, paste_as, copy_clip, toggle_pin, delete_clip, hide_window, reveal_window, fit_window, toggle_stack,
+            page_ready, list_clips, paste_clip, paste_choices, paste_as, copy_clip, toggle_pin, delete_clip, hide_window, reveal_window, fit_window, toggle_stack,
             paste_stack, cancel_stack, get_stack, open_access_settings, reveal_in_explorer, open_url, copy_text, copy_fence, visual_source,
             save_thumb, get_settings,
             set_config, set_autostart, set_paused, clear_history, reveal_config
@@ -794,7 +885,7 @@ pub fn run() {
             WindowEvent::Focused(false) => {
                 let st = window.state::<AppState>();
                 if st.shown_at.lock().unwrap().elapsed() > BLUR_GRACE {
-                    let _ = window.hide();
+                    close_popup(window.app_handle(), false);
                 }
             }
             WindowEvent::CloseRequested { api, .. } => {
@@ -808,6 +899,7 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             if let Some(w) = popup(app.handle()) {
                 platform::prepare_popup(&w);
+                platform::park_at_start(&w);
             }
             platform::request_access();
             let dir = app.path().app_data_dir()?;
@@ -822,6 +914,11 @@ pub fn run() {
                 }
             };
             let db = Arc::new(db);
+            // The popup reads the list again while it is hidden, so opening it has nothing to wait for.
+            let handle = app.handle().clone();
+            db.on_change(move |version| {
+                let _ = handle.emit("stash-changed", version);
+            });
             let paused = Arc::new(AtomicBool::new(false));
             let quiet_until = Arc::new(AtomicI64::new(0));
             let (pasted, pastes) = channel::<()>();
@@ -839,6 +936,9 @@ pub fn run() {
                 placement: Mutex::new(None),
                 height_px: Mutex::new(360),
                 shown_at: Mutex::new(Instant::now()),
+                open: AtomicBool::new(false),
+                came_from: Mutex::new(0),
+                ready: Mutex::new(None),
             });
 
             let hotkey = cfg.read().unwrap_or_else(|e| e.into_inner()).hotkey.clone();

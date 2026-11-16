@@ -118,8 +118,6 @@ kbd {
 @property --sweep { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes sweep { to { --sweep: 360deg; } }
-@keyframes card-in { from { opacity: 0; transform: translateY(-4px) scale(.985); filter: blur(4px); } }
-@keyframes row-in { from { opacity: 0; transform: translateY(4px); filter: blur(2px); } }
 @keyframes breathe { 0% { opacity: .7; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.75); } }
 .card, .tabs, .tile, kbd, .chip, footer, .search, .preview, .menu, .menu-item {
   transition: background-color .2s, border-color .2s, color .2s;
@@ -145,7 +143,8 @@ kbd {
   background: conic-gradient(from var(--sweep), transparent 0deg 290deg, var(--sheen) 330deg, transparent 352deg);
   opacity: .5; animation: sweep 11s linear infinite;
 }
-.card.enter { animation: card-in .34s var(--out); }
+/* Out of sight while parked (app.js), so nothing moves there. */
+body.parked *, body.parked *::before, body.parked *::after { animation-play-state: paused !important; }
 .card.morph { transition: height .24s var(--ease), background-color .2s, border-color .2s, color .2s; }
 /* While the card grows above the caret its bottom edge stays put. */
 body.above { min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; }
@@ -198,8 +197,6 @@ body.above { min-height: 100vh; display: flex; flex-direction: column; justify-c
   transition: transform .32s var(--spring), height .32s var(--spring), opacity .12s;
 }
 .group { position: relative; padding: 9px 9px 5px; color: var(--muted-fg); font-size: 10.5px; font-weight: 550; letter-spacing: .09em; text-transform: uppercase; }
-/* On opening, rows settle in one after another (app.js sets --i). */
-.list.stagger > .item, .list.stagger > .group { animation: row-in .42s var(--out) both; animation-delay: calc(var(--i, 0) * 22ms + 40ms); }
 
 .item { position: relative; display: flex; align-items: center; gap: 11px; padding: 6px 9px; border-radius: 10px; min-height: 44px; }
 .item.expanded { align-items: flex-start; }
